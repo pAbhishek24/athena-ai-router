@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "defaultProviderId": "claude",
+  "switchThreshold": 0.99,
+  "dashboard": {
+    "host": "127.0.0.1",
+    "port": 3077,
+    "refreshMs": 2000
+  },
+  "providers": [
+    {
+      "id": "claude",
+      "label": "Claude",
+      "command": "claude",
+      "args": ["-p", "--output-format", "json"],
+      "budgetTokens": 200000
+    },
+    {
+      "id": "codex",
+      "label": "Codex",
+      "command": "codex",
+      "args": ["exec", "--json", "--skip-git-repo-check"],
+      "budgetTokens": 200000
+    },
+    {
+      "id": "gemini",
+      "label": "Gemini",
+      "commandCandidates": ["gemini", "gemni"],
+      "args": [],
+      "budgetTokens": 200000
+    },
+    {
+      "id": "ollama",
+      "label": "Ollama Local",
+      "transport": "http",
+      "enabled": false,
+      "model": "llama3.1",
+      "budgetTokens": 200000,
+      "http": {
+        "baseUrl": "http://127.0.0.1:11434",
+        "path": "/api/chat",
+        "mode": "ollama-chat",
+        "timeoutMs": 120000
+      }
+    },
+    {
+      "id": "lmstudio",
+      "label": "LM Studio Local",
+      "transport": "http",
+      "enabled": false,
+      "model": "local-model",
+      "budgetTokens": 200000,
+      "http": {
+        "baseUrl": "http://127.0.0.1:1234",
+        "path": "/v1/chat/completions",
+        "mode": "openai-chat",
+        "timeoutMs": 120000
+      }
+    }
+  ]
+}

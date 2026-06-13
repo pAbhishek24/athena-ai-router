@@ -1,0 +1,40 @@
+{
+  "name": "athena-ai-router",
+  "version": "1.0.0",
+  "description": "Terminal router for Claude, Codex, Gemini, and local HTTP-hosted LLMs with token tracking and automatic model handoff",
+  "type": "commonjs",
+  "main": "src/cli.js",
+  "bin": {
+    "athena-router": "./bin/athena-router.js"
+  },
+  "files": [
+    "bin/",
+    "config/router.config.example.json",
+    "README.md",
+    "LICENSE",
+    "src/"
+  ],
+  "scripts": {
+    "start": "node bin/athena-router.js",
+    "dev": "node bin/athena-router.js",
+    "test": "node --test",
+    "prepublishOnly": "npm test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "ai",
+    "cli",
+    "claude",
+    "codex",
+    "gemini",
+    "ollama",
+    "lm-studio",
+    "router"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT"
+}

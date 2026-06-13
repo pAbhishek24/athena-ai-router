@@ -58,3 +58,4 @@ To publish a new npm release:
 3. Ensure the repository secret `NPM_TOKEN` is set to an npm automation token with publish access.
 
 The publish workflow runs on tags like `v1.0.1`, reruns the test suite, verifies the package tarball, and then publishes to npm.
+It uses provenance output and an npm publish token stored in `NPM_TOKEN` for the publish step.

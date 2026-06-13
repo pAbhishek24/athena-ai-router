@@ -5,7 +5,7 @@
   "type": "commonjs",
   "main": "src/cli.js",
   "bin": {
-    "model-router": "./bin/model-router.js"
+    "model-router": "bin/model-router.js"
   },
   "files": [
     "bin/",

@@ -51,11 +51,26 @@ Gemini can be configured with fallback command names, so the router will try the
 
 GitHub Actions runs tests and package validation on every push and pull request to `main`.
 
-To publish a new npm release:
+This project uses npm trusted publishing, so the GitHub Actions release job does not need an `NPM_TOKEN`.
+
+To enable trusted publishing in npm:
+
+1. Open the package page on npmjs.com.
+2. Go to `Settings` -> `Trusted publishing`.
+3. Add a trusted publisher for GitHub Actions with these values:
+   - Organization or user: `pAbhishek24`
+   - Repository: `athena-ai-router`
+   - Workflow filename: `publish.yml`
+   - Allowed action: `npm publish`
+4. Save the trusted publisher configuration.
+
+Then publish a release from GitHub:
 
 1. Bump the version with `npm version patch`, `npm version minor`, or `npm version major`.
-2. Push the commit and tag with `git push --follow-tags`.
-3. Ensure the repository secret `NPM_TOKEN` is set to an npm automation token with publish access.
+2. Create the version tag with `git tag v1.0.1`.
+3. Push the commit and tag with `git push --follow-tags`.
+4. GitHub Actions will rerun the test suite, verify the package tarball, and publish to npm using OIDC.
 
-The publish workflow runs on tags like `v1.0.1`, reruns the test suite, verifies the package tarball, and then publishes to npm.
-It uses provenance output and an npm publish token stored in `NPM_TOKEN` for the publish step.
+Trusted publishing automatically generates provenance for public packages published from GitHub Actions, so no `--provenance` flag or registry token is needed.
+
+If the package settings page is not available yet because the package has never been published, do one bootstrap publish first, then add the trusted publisher. That is the practical path for brand-new packages.

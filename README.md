@@ -46,3 +46,15 @@ Gemini can be configured with fallback command names, so the router will try the
 - Gemini is supported as a configurable adapter with command fallbacks such as `gemini` and `gemni`.
 - Local hosted models are supported through the HTTP transport adapter, so you can mix remote CLI tools and local servers in the same terminal session.
 - Token numbers are normalized from provider output when available and fall back to a conservative estimate when a provider does not report them.
+
+## Release
+
+GitHub Actions runs tests and package validation on every push and pull request to `main`.
+
+To publish a new npm release:
+
+1. Bump the version with `npm version patch`, `npm version minor`, or `npm version major`.
+2. Push the commit and tag with `git push --follow-tags`.
+3. Ensure the repository secret `NPM_TOKEN` is set to an npm automation token with publish access.
+
+The publish workflow runs on tags like `v1.0.1`, reruns the test suite, verifies the package tarball, and then publishes to npm.

@@ -21,6 +21,26 @@ function formatPercent(ratio) {
   return `${(Math.max(0, ratio || 0) * 100).toFixed(1)}%`;
 }
 
+function formatUsageSnapshot(usage) {
+  if (!usage || typeof usage !== 'object') {
+    return 'n/a';
+  }
+
+  if (Number.isFinite(usage.totalTokens) && usage.totalTokens > 0) {
+    return `${formatNumber(usage.totalTokens)} tokens`;
+  }
+
+  const pieces = [];
+  if (Number.isFinite(usage.promptTokens)) {
+    pieces.push(`prompt ${formatNumber(usage.promptTokens)}`);
+  }
+  if (Number.isFinite(usage.completionTokens)) {
+    pieces.push(`completion ${formatNumber(usage.completionTokens)}`);
+  }
+
+  return pieces.length ? pieces.join(', ') : 'n/a';
+}
+
 function renderProgressBar(ratio, width = 22) {
   const clamped = Math.max(0, Math.min(1, ratio || 0));
   const filled = Math.round(clamped * width);
@@ -35,17 +55,18 @@ function renderStatusText(snapshot) {
   lines.push(`Active provider: ${snapshot.activeProvider ? snapshot.activeProvider.label : 'none'}`);
   lines.push(`Dashboard: http://${snapshot.dashboard.host || '127.0.0.1'}:${snapshot.dashboard.port || 3077}`);
   lines.push('');
-  lines.push('Provider'.padEnd(12) + 'Usage'.padEnd(20) + 'Remaining'.padEnd(14) + 'Health'.padEnd(12) + 'Gauge');
-  lines.push('-'.repeat(78));
+  lines.push('Provider'.padEnd(12) + 'Usage'.padEnd(20) + 'Remaining'.padEnd(14) + 'Auth'.padEnd(12) + 'Health'.padEnd(12) + 'Gauge');
+  lines.push('-'.repeat(90));
 
   for (const provider of snapshot.providerViews) {
     const usage = `${formatNumber(provider.usedTokens)} / ${formatNumber(provider.limitTokens)}`;
     const remaining = formatNumber(provider.remainingTokens);
+    const auth = String(provider.authState || 'unknown');
     const health = provider.health || 'unknown';
     const gauge = renderProgressBar(provider.ratio, 22);
     const prefix = provider.isActive ? '>' : ' ';
     lines.push(
-      `${prefix} ${provider.label.padEnd(11)}${usage.padEnd(20)}${remaining.padEnd(14)}${health.padEnd(12)}${gauge} ${formatPercent(provider.ratio)}`
+      `${prefix} ${provider.label.padEnd(11)}${usage.padEnd(20)}${remaining.padEnd(14)}${auth.padEnd(12)}${health.padEnd(12)}${gauge} ${formatPercent(provider.ratio)}`
     );
   }
 
@@ -423,6 +444,25 @@ function buildDashboardHtml(snapshot) {
       return ((ratio || 0) * 100).toFixed(1) + '%';
     }
 
+    function formatUsageSnapshot(usage) {
+      if (!usage || typeof usage !== 'object') {
+        return 'n/a';
+      }
+
+      if (Number.isFinite(usage.totalTokens) && usage.totalTokens > 0) {
+        return formatNumber(usage.totalTokens) + ' tokens';
+      }
+
+      const pieces = [];
+      if (Number.isFinite(usage.promptTokens)) {
+        pieces.push('prompt ' + formatNumber(usage.promptTokens));
+      }
+      if (Number.isFinite(usage.completionTokens)) {
+        pieces.push('completion ' + formatNumber(usage.completionTokens));
+      }
+      return pieces.length ? pieces.join(', ') : 'n/a';
+    }
+
     function escapeHtml(value) {
       return String(value)
         .replace(/&/g, '&amp;')
@@ -463,10 +503,14 @@ function buildDashboardHtml(snapshot) {
               '<div class="pie-label">',
                 '<div class="percent">' + formatPercent(provider.ratio || 0) + '</div>',
                 '<div class="fraction">' + formatNumber(provider.usedTokens) + ' / ' + formatNumber(provider.limitTokens) + '</div>',
+                provider.statusMessage ? '<div class="fraction" style="max-width: 120px; color: #cbd5e1;">' + escapeHtml(provider.statusMessage) + '</div>' : '',
               '</div>',
             '</div>',
             '<div class="stats">',
               '<div class="stat"><span>Remaining</span><strong>' + formatNumber(provider.remainingTokens) + '</strong></div>',
+              '<div class="stat"><span>Auth</span><strong>' + escapeHtml(provider.authState || 'unknown') + '</strong></div>',
+              '<div class="stat"><span>Account</span><strong>' + escapeHtml(provider.accountLabel || 'n/a') + '</strong></div>',
+              '<div class="stat"><span>Status usage</span><strong>' + escapeHtml(formatUsageSnapshot(provider.statusUsage)) + '</strong></div>',
               '<div class="stat"><span>Health</span><strong>' + escapeHtml(provider.health || 'unknown') + '</strong></div>',
               '<div class="stat"><span>Turns</span><strong>' + formatNumber(provider.totalTurns || 0) + '</strong></div>',
               '<div class="stat"><span>Session</span><strong>' + escapeHtml(provider.lastSessionRef ? JSON.stringify(provider.lastSessionRef) : 'none') + '</strong></div>',

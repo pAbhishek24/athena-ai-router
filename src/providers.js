@@ -106,6 +106,18 @@ function resolveProviderCommand(provider, env = process.env) {
   return resolveCommand(candidates, env);
 }
 
+function resolveProviderStatusCommand(provider, env = process.env) {
+  const status = provider.status && typeof provider.status === 'object' ? provider.status : {};
+  const candidates = [];
+  if (typeof status.command === 'string' && status.command.trim()) {
+    candidates.push(status.command.trim());
+  }
+  if (Array.isArray(status.commandCandidates)) {
+    candidates.push(...status.commandCandidates.map((candidate) => String(candidate).trim()).filter(Boolean));
+  }
+  return resolveCommand(candidates, env);
+}
+
 function buildCommandInvocation(provider, { prompt, sessionRef } = {}) {
   const command = typeof provider.command === 'string' && provider.command.trim()
     ? provider.command.trim()
@@ -229,6 +241,215 @@ function buildInvocation(provider, { prompt, sessionRef } = {}) {
   }
 
   return buildCommandInvocation(provider, { prompt, sessionRef });
+}
+
+function normalizeAuthState(value, fallback = 'unknown') {
+  const text = String(value || '').trim().toLowerCase();
+  if (!text) {
+    return fallback;
+  }
+  if (['ready', 'authenticated', 'connected', 'logged_in', 'logged-in', 'online', 'local'].includes(text)) {
+    return text === 'local' ? 'ready' : 'ready';
+  }
+  if (['auth', 'unauthorized', 'unauthenticated', 'needs-auth', 'needs_auth', 'login-required', 'login_required'].includes(text)) {
+    return 'auth';
+  }
+  if (['missing', 'offline', 'unavailable', 'disabled'].includes(text)) {
+    return text;
+  }
+  return fallback;
+}
+
+function extractStatusMetadata(provider, payload, fallbackText = '') {
+  const status = provider.status && typeof provider.status === 'object' ? provider.status : {};
+  const rawText = String(fallbackText || '').trim();
+  const usageSource = getPathValue(payload, status.usagePath) ?? payload?.usage ?? payload?.usageMetadata ?? payload?.tokenUsage ?? null;
+  const accountValue =
+    getPathValue(payload, status.accountPath) ??
+    payload?.account?.name ??
+    payload?.account?.email ??
+    payload?.user?.name ??
+    payload?.user?.email ??
+    payload?.identity?.name ??
+    payload?.identity?.email ??
+    payload?.workspace?.account ??
+    payload?.workspace?.user ??
+    status.fallbackAccountLabel ??
+    '';
+  const authValue =
+    getPathValue(payload, status.authPath) ??
+    payload?.authState ??
+    payload?.auth_state ??
+    payload?.authenticated ??
+    payload?.isAuthenticated ??
+    payload?.loginState ??
+    payload?.status ??
+    '';
+  const messageValue =
+    getPathValue(payload, status.messagePath) ??
+    getPathValue(payload, status.responsePath) ??
+    payload?.message ??
+    payload?.statusMessage ??
+    rawText;
+
+  const accountLabel = String(accountValue || '').trim() || null;
+  let authState;
+  if (typeof authValue === 'boolean') {
+    authState = authValue ? 'ready' : 'auth';
+  } else {
+    authState = normalizeAuthState(authValue || (rawText ? 'ready' : ''), 'unknown');
+  }
+
+  let usage = null;
+  if (usageSource && typeof usageSource === 'object') {
+    usage = normalizeGenericUsage(usageSource, '', rawText);
+  }
+
+  return {
+    accountLabel,
+    authState,
+    statusMessage: String(messageValue || '').trim() || null,
+    usage,
+  };
+}
+
+async function probeProviderStatus(provider, { cwd, env, runner = runCommand, fetchImpl = globalThis.fetch } = {}) {
+  const transport = getProviderTransport(provider);
+  const now = new Date().toISOString();
+
+  if (transport === 'http') {
+    const http = provider.http || {};
+    const baseUrl = String(http.baseUrl || '').trim();
+    const status = provider.status && typeof provider.status === 'object' ? provider.status : {};
+    const pathValue = String(status.path || http.statusPath || '').trim();
+
+    if (!baseUrl) {
+      return {
+        health: 'missing',
+        authState: 'missing',
+        accountLabel: null,
+        statusMessage: `HTTP provider ${provider.id} is missing http.baseUrl`,
+        usage: null,
+        lastStatusAt: now,
+        raw: null,
+      };
+    }
+
+    if (!pathValue) {
+      return {
+        health: 'ready',
+        authState: 'ready',
+        accountLabel: status.fallbackAccountLabel || provider.label || provider.id,
+        statusMessage: 'Local HTTP provider reachable',
+        usage: null,
+        lastStatusAt: now,
+        raw: null,
+      };
+    }
+
+    if (typeof fetchImpl !== 'function') {
+      return {
+        health: 'missing',
+        authState: 'missing',
+        accountLabel: null,
+        statusMessage: 'Global fetch is unavailable in this runtime',
+        usage: null,
+        lastStatusAt: now,
+        raw: null,
+      };
+    }
+
+    try {
+      const url = new URL(pathValue, baseUrl).toString();
+      const response = await fetchImpl(url, {
+        method: String(status.method || 'GET').trim().toUpperCase() || 'GET',
+        headers: normalizeHeaders(status.headers || http.headers || {}),
+      });
+      const responseText = await response.text();
+      const parsed = safeParseJson(responseText) || {};
+      if (!response.ok) {
+        const message = parsed?.error?.message || parsed?.message || parsed?.error || responseText || `HTTP ${response.status} ${response.statusText}`;
+        return {
+          health: classifyFailure(message),
+          authState: normalizeAuthState(message, 'offline'),
+          accountLabel: null,
+          statusMessage: message,
+          usage: null,
+          lastStatusAt: now,
+          raw: parsed || responseText,
+        };
+      }
+
+      const metadata = extractStatusMetadata(provider, parsed, responseText);
+      return {
+        health: metadata.authState === 'auth' ? 'auth' : 'ready',
+        authState: metadata.authState,
+        accountLabel: metadata.accountLabel,
+        statusMessage: metadata.statusMessage,
+        usage: metadata.usage,
+        lastStatusAt: now,
+        raw: parsed,
+      };
+    } catch (error) {
+      const message = error && error.message ? error.message : String(error);
+      return {
+        health: classifyFailure(message),
+        authState: normalizeAuthState(message, 'offline'),
+        accountLabel: null,
+        statusMessage: message,
+        usage: null,
+        lastStatusAt: now,
+        raw: null,
+      };
+    }
+  }
+
+  const statusCommand = resolveProviderStatusCommand(provider, env);
+  const status = provider.status && typeof provider.status === 'object' ? provider.status : {};
+  if (!statusCommand || status.enabled === false) {
+    const command = resolveProviderCommand(provider, env);
+    return {
+      health: command ? 'ready' : 'missing',
+      authState: command ? 'unknown' : 'missing',
+      accountLabel: status.fallbackAccountLabel || provider.label || provider.id,
+      statusMessage: command ? 'Status probe not configured' : `Command not found: ${provider.commandCandidates && provider.commandCandidates.length ? provider.commandCandidates.join(', ') : provider.command || provider.id}`,
+      usage: null,
+      lastStatusAt: now,
+      raw: null,
+    };
+  }
+
+  try {
+    const invocationArgs = Array.isArray(status.args) ? status.args.slice() : [];
+    const rawResult = await runner(statusCommand, invocationArgs, { cwd, env });
+    const trimmed = String(rawResult.stdout || '').trim();
+    const parsed = trimmed ? safeParseJson(trimmed) : null;
+    const payload = parsed && typeof parsed === 'object' ? parsed : { status: trimmed };
+    const metadata = extractStatusMetadata(provider, payload, String(rawResult.stderr || '').trim() || trimmed);
+    const errorText = String(rawResult.stderr || '').trim();
+    const exitHealth = rawResult.code === 0 ? 'ready' : classifyFailure(errorText || trimmed);
+    const health = metadata.authState === 'auth' ? 'auth' : exitHealth;
+    return {
+      health,
+      authState: metadata.authState === 'unknown' && rawResult.code === 0 ? 'ready' : metadata.authState,
+      accountLabel: metadata.accountLabel,
+      statusMessage: metadata.statusMessage,
+      usage: metadata.usage,
+      lastStatusAt: now,
+      raw: parsed || trimmed || rawResult,
+    };
+  } catch (error) {
+    const message = error && error.message ? error.message : String(error);
+    return {
+      health: classifyFailure(message),
+      authState: normalizeAuthState(message, 'error'),
+      accountLabel: null,
+      statusMessage: message,
+      usage: null,
+      lastStatusAt: now,
+      raw: null,
+    };
+  }
 }
 
 function parseClaudeOutput(stdout, stderr, exitCode) {
@@ -490,7 +711,8 @@ async function executeCommandProvider(provider, { prompt, sessionRef, cwd, env, 
   }
 
   const invocation = buildCommandInvocation(provider, { prompt, sessionRef });
-  const rawResult = await runner(command, invocation.args, { cwd, env });
+  const commandRunner = typeof runner === 'function' ? runner : runCommand;
+  const rawResult = await commandRunner(command, invocation.args, { cwd, env });
   const parsed = parseProviderOutput(provider, {
     stdout: rawResult.stdout,
     stderr: rawResult.stderr,
@@ -616,6 +838,7 @@ module.exports = {
   executeCommandProvider,
   executeHttpProvider,
   executeProvider,
+  probeProviderStatus,
   getPathValue,
   getProviderTransport,
   normalizeHttpUsage,
@@ -625,4 +848,5 @@ module.exports = {
   parseHttpProviderOutput,
   parseProviderOutput,
   resolveProviderCommand,
+  resolveProviderStatusCommand,
 };

@@ -9,6 +9,7 @@ const {
   executeHttpProvider,
   parseClaudeOutput,
   parseCodexOutput,
+  probeProviderStatus,
   resolveProviderCommand,
 } = require('../src/providers');
 
@@ -213,4 +214,28 @@ test('executeHttpProvider sends an OpenAI-compatible request and parses the resp
     { role: 'system', content: 'You are terse.' },
     { role: 'user', content: 'Explain the plan' },
   ]);
+});
+
+test('probeProviderStatus reads structured auth and account metadata', async () => {
+  const result = await probeProviderStatus(
+    {
+      id: 'claude',
+      command: 'node',
+      status: {
+        command: 'node',
+        args: [
+          '-e',
+          'process.stdout.write(JSON.stringify({ authState: "ready", account: { email: "user@example.com" }, usage: { prompt_tokens: 8, completion_tokens: 4 } }))',
+        ],
+      },
+    },
+    {
+      cwd: process.cwd(),
+    }
+  );
+
+  assert.equal(result.health, 'ready');
+  assert.equal(result.authState, 'ready');
+  assert.equal(result.accountLabel, 'user@example.com');
+  assert.equal(result.usage.totalTokens, 12);
 });

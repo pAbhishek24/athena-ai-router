@@ -230,3 +230,40 @@ test('router can hand off from a CLI provider to an HTTP local model', async () 
   assert.match(requestBody.messages[0].content, /Target provider: LM Studio/);
   assert.equal(router.state.activeProviderId, 'lmstudio');
 });
+
+test('router uses the built-in command runner when none is provided', async () => {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-model-router-'));
+  const config = {
+    version: 1,
+    defaultProviderId: 'local',
+    switchThreshold: 0.99,
+    dashboard: { host: '127.0.0.1', port: 3077, refreshMs: 2000 },
+    providers: [
+      {
+        id: 'local',
+        label: 'Local',
+        command: 'node',
+        args: ['-e', 'process.stdout.write(process.argv.slice(1).join(" "))'],
+        budgetTokens: 5000,
+        model: '',
+        enabled: true,
+      },
+    ],
+  };
+  const state = createDefaultState(config, cwd);
+  state.providerState.local.health = 'ready';
+  state.activeProviderId = 'local';
+
+  const router = createRouter({
+    config,
+    state,
+    cwd,
+  });
+
+  const result = await router.send('Inspect the workspace');
+
+  assert.equal(result.ok, true);
+  assert.equal(result.providerId, 'local');
+  assert.match(result.text, /Current user request:/);
+  assert.match(result.text, /Inspect the workspace/);
+});

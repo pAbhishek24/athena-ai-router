@@ -1,11 +1,14 @@
 const fs = require('fs');
 const path = require('path');
 const readline = require('readline/promises');
+const { spawn } = require('child_process');
 const { stdin, stdout, stderr } = require('process');
 const { loadConfig, saveConfig } = require('./config');
 const { createDashboardServer, renderStatusText } = require('./dashboard');
+const { runWorkspaceTask } = require('./agent');
 const { createRouter } = require('./router');
 const { ensureRouterStructure, getConfigPath } = require('./paths');
+const { runCommand } = require('./runner');
 const { loadState } = require('./store');
 
 const APP_NAME = 'AI Model Router';
@@ -18,9 +21,11 @@ function printUsage() {
     'Usage:',
     `  ${COMMAND_NAME} init`,
     `  ${COMMAND_NAME} status [--json]`,
-    `  ${COMMAND_NAME} serve [--host HOST] [--port PORT]`,
+    `  ${COMMAND_NAME} serve [--host HOST] [--port PORT] [--open]`,
+    `  ${COMMAND_NAME} panel`,
     `  ${COMMAND_NAME} ask [prompt...]`,
     `  ${COMMAND_NAME} chat`,
+    `  ${COMMAND_NAME} task [prompt...]`,
     `  ${COMMAND_NAME} switch <providerId>`,
     '',
     'Options:',
@@ -28,6 +33,7 @@ function printUsage() {
     '  --config FILE   Use a different config file',
     '  --force         Overwrite the starter config on init',
     '  --json          Emit JSON for status or ask',
+    '  --open          Open the dashboard in a browser after serve starts',
     '',
   ].join('\n');
   stdout.write(`${text}\n`);
@@ -40,6 +46,7 @@ function parseArgs(argv) {
     configPath: null,
     force: false,
     json: false,
+    open: false,
     host: null,
     port: null,
   };
@@ -68,6 +75,10 @@ function parseArgs(argv) {
     }
     if (value === '--json') {
       parsed.json = true;
+      continue;
+    }
+    if (value === '--open') {
+      parsed.open = true;
       continue;
     }
     if (value === '--help' || value === '-h') {
@@ -108,9 +119,11 @@ async function createRuntime(argv) {
     state,
     cwd: parsed.cwd,
     env: process.env,
+    runner: runCommand,
     statePath,
     persist: true,
   });
+  await router.refreshProviderStatus();
 
   return {
     command,
@@ -120,6 +133,34 @@ async function createRuntime(argv) {
     configBundle,
     statePath,
   };
+}
+
+function openUrl(url) {
+  const target = String(url || '').trim();
+  if (!target) {
+    return Promise.resolve(false);
+  }
+
+  const command =
+    process.platform === 'darwin'
+      ? 'open'
+      : process.platform === 'win32'
+        ? 'cmd'
+        : 'xdg-open';
+  const args = process.platform === 'win32' ? ['/c', 'start', '', target] : [target];
+
+  return new Promise((resolve) => {
+    try {
+      const child = spawn(command, args, {
+        detached: true,
+        stdio: 'ignore',
+      });
+      child.unref();
+      resolve(true);
+    } catch {
+      resolve(false);
+    }
+  });
 }
 
 async function runInit(parsed) {
@@ -189,9 +230,60 @@ async function runAsk(router, parsed, commandArgs) {
   );
 }
 
+async function runTask(router, parsed, commandArgs) {
+  const promptFromArgs = commandArgs.join(' ').trim();
+  const stdinPrompt = promptFromArgs || (await readStdinIfAvailable());
+  if (!stdinPrompt) {
+    throw new Error('task requires a prompt argument or piped stdin');
+  }
+
+  const result = await runWorkspaceTask(router, stdinPrompt, {
+    onTurn: ({ type, result: turnResult, plan }) => {
+      if (turnResult.switchedFrom && turnResult.switchedTo) {
+        stdout.write(`Switched ${turnResult.switchedFrom} -> ${turnResult.switchedTo}\n`);
+      } else if (turnResult.switchedFrom) {
+        stdout.write(`Handoff from ${turnResult.switchedFrom} to ${turnResult.providerId}\n`);
+      }
+
+      if (type === 'freeform') {
+        stdout.write(`${turnResult.text}\n`);
+        return;
+      }
+
+      const summary = plan.summary || 'planning';
+      stdout.write(`[${turnResult.providerId}] ${summary}\n`);
+      if (plan.reply) {
+        stdout.write(`${plan.reply}\n`);
+      }
+    },
+    onAction: ({ action, output }) => {
+      stdout.write(`[tool:${action.type}] ${output.summary}\n`);
+      if (action.type === 'read_file' && output.content) {
+        stdout.write(`${output.content}\n`);
+      }
+      if (action.type === 'list_files' && Array.isArray(output.files) && output.files.length) {
+        stdout.write(`${output.files.join('\n')}\n`);
+      }
+      if (action.type === 'shell') {
+        if (output.stdout) {
+          stdout.write(`${output.stdout}\n`);
+        }
+        if (output.stderr) {
+          stderr.write(`${output.stderr}\n`);
+        }
+      }
+    },
+  });
+
+  if (!result.ok) {
+    stderr.write(`${result.errorMessage || 'Task failed'}\n`);
+    return;
+  }
+}
+
 async function runChat(router) {
   const rl = readline.createInterface({ input: stdin, output: stdout, terminal: true });
-  stdout.write(`${APP_NAME} chat. Use /status, /switch <providerId>, /exit.\n`);
+  stdout.write(`${APP_NAME} chat. Type instructions for the active model. Use /task <prompt> for workspace actions, /status, /switch <providerId>, /exit.\n`);
 
   while (true) {
     const line = await rl.question('model-router> ');
@@ -223,6 +315,16 @@ async function runChat(router) {
       continue;
     }
 
+    if (input.startsWith('/task ')) {
+      const taskPrompt = input.slice('/task '.length).trim();
+      if (!taskPrompt) {
+        stdout.write('Usage: /task <prompt>\n');
+        continue;
+      }
+      await runTask(router, { json: false }, [taskPrompt]);
+      continue;
+    }
+
     const result = await router.send(input);
     if (result.switchedFrom && result.switchedTo) {
       stdout.write(`Switched ${result.switchedFrom} -> ${result.switchedTo}\n`);
@@ -246,6 +348,9 @@ async function runServe(router, parsed) {
   const info = await server.listen();
   stdout.write(`Dashboard ready at ${info.url}\n`);
   stdout.write('Press Ctrl+C to stop.\n');
+  if (parsed.open) {
+    await openUrl(info.url);
+  }
 
   await new Promise(() => {});
 }
@@ -295,12 +400,23 @@ async function main(argv = process.argv.slice(2)) {
     return;
   }
 
+  if (command === 'task') {
+    await runTask(router, parsed, commandArgs);
+    return;
+  }
+
   if (command === 'chat') {
     await runChat(router);
     return;
   }
 
   if (command === 'serve') {
+    await runServe(router, parsed);
+    return;
+  }
+
+  if (command === 'panel') {
+    parsed.open = true;
     await runServe(router, parsed);
     return;
   }
@@ -324,4 +440,5 @@ module.exports = {
   runInit,
   runServe,
   runSwitch,
+  runTask,
 };

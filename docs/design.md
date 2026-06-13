@@ -14,6 +14,14 @@ Each provider needs a `limit`, `used`, and `remaining` value.
 
 The primary visualization is a browser dashboard served from the router process, rendered with SVG/CSS donut charts. The terminal status command also prints a compact text summary for quick checks.
 
+Providers can optionally expose an explicit `status` probe so the router can cache:
+
+- authentication state
+- account identity or workspace label
+- provider-reported usage or quota snapshots
+
+If a provider does not expose a probe, the router falls back to command availability plus turn-by-turn usage tracking.
+
 ### 2. Automatic switching
 
 Before dispatching a new turn, the router checks the active provider's local ledger.
@@ -32,6 +40,22 @@ The router keeps a shared project ledger:
 - handoff notes explaining why a switch happened
 
 When the router moves from one provider to another, it flattens the shared ledger into a prompt envelope so the new provider receives the same task context.
+
+### 4. Workspace actions
+
+The router also supports an agent-style task mode.
+
+In task mode, the model is asked to return a strict JSON action plan. The router executes the plan against the current workspace using local tools such as:
+
+- read file
+- write file
+- append file
+- replace text
+- create directories
+- list files
+- run shell commands
+
+This makes the CLI behave more like a coding IDE than a plain chat relay.
 
 ## Runtime layout
 
@@ -85,8 +109,10 @@ The dashboard shows the normalized local total so switching works consistently a
 - `init` writes the starter config
 - `status` prints the local ledger
 - `serve` starts the graphical dashboard
+- `panel` starts the graphical dashboard and opens a browser window
 - `ask` sends a single prompt
 - `chat` opens an interactive loop
+- `task` opens the agent-style workspace executor
 - `switch` forces the active provider for the next turn
 
 ## Local model integration

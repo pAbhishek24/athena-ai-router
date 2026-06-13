@@ -56,6 +56,33 @@ function normalizeCommandCandidates(provider) {
   return rawCandidates.map((candidate) => String(candidate).trim()).filter(Boolean);
 }
 
+function normalizeStatusConfig(provider) {
+  const status = provider.status && typeof provider.status === 'object' ? provider.status : {};
+  const commandCandidates = Array.isArray(status.commandCandidates)
+    ? status.commandCandidates
+    : typeof status.command === 'string'
+      ? [status.command]
+      : [];
+
+  const command = typeof status.command === 'string' ? status.command.trim() : '';
+
+  return {
+    enabled: status.enabled !== false,
+    command,
+    commandCandidates: commandCandidates.map((candidate) => String(candidate).trim()).filter(Boolean),
+    args: Array.isArray(status.args) ? status.args.slice() : [],
+    method: String(status.method || 'GET').trim().toUpperCase() || 'GET',
+    path: String(status.path || '').trim(),
+    responsePath: String(status.responsePath || '').trim(),
+    accountPath: String(status.accountPath || '').trim(),
+    authPath: String(status.authPath || '').trim(),
+    usagePath: String(status.usagePath || '').trim(),
+    limitPath: String(status.limitPath || '').trim(),
+    messagePath: String(status.messagePath || '').trim(),
+    fallbackAccountLabel: String(status.fallbackAccountLabel || '').trim(),
+  };
+}
+
 function mergeObject(base, override) {
   if (Array.isArray(base)) {
     return Array.isArray(override) ? override.slice() : base.slice();
@@ -109,6 +136,7 @@ function normalizeProvider(provider, index) {
     maxTokens: Number.isFinite(provider.maxTokens) ? provider.maxTokens : undefined,
     topP: Number.isFinite(provider.topP) ? provider.topP : undefined,
     http: normalizeHttpConfig(provider),
+    status: normalizeStatusConfig(provider),
   };
 }
 

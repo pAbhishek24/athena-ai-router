@@ -20,8 +20,10 @@ npm install -g ai-model-router
 
 - `model-router status` prints the current usage table.
 - `model-router serve` launches a local dashboard with pie charts.
+- `model-router panel` launches the same dashboard and opens it in your browser.
 - `model-router ask "prompt"` sends one prompt through the active model.
-- `model-router chat` starts an interactive terminal loop.
+- `model-router chat` starts an interactive prompt for the active model.
+- `model-router task "prompt"` runs an agent-style workspace task that can read, write, and execute local commands.
 - `model-router init` creates a starter config in `~/.ai-model-router/config.json`.
 - If you prefer not to install globally, use `npx model-router status` or `npm start -- status`.
 
@@ -42,12 +44,30 @@ The sample config includes disabled local examples; set `enabled: true` after yo
 
 Gemini can be configured with fallback command names, so the router will try the first binary it finds on `PATH`.
 
+Provider auth/status can be probed explicitly with an optional `status` block per provider. Use it when the CLI or server can return account metadata, login state, or quota data. If you do not configure a status probe, the router still tracks turn usage and command availability, but it cannot invent account details.
+
+Example shape:
+
+```json
+{
+  "status": {
+    "command": "your-cli",
+    "args": ["status", "--json"],
+    "accountPath": "account.email",
+    "authPath": "authState",
+    "usagePath": "usage"
+  }
+}
+```
+
 ## Notes
 
 - Claude and Codex are probed from the current `PATH`.
 - Gemini is supported as a configurable adapter with command fallbacks such as `gemini` and `gemni`.
 - Local hosted models are supported through the HTTP transport adapter, so you can mix remote CLI tools and local servers in the same terminal session.
 - Token numbers are normalized from provider output when available and fall back to a conservative estimate when a provider does not report them.
+- `model-router task` is the closest mode to a CLI IDE. It asks the model for a JSON action plan and executes workspace tools locally, so file edits and shell commands happen from the router instead of only being described in text.
+- `model-router serve --open` or `model-router panel` gives you the live pie-chart view in a browser window. Native system notification centers do not support rich pie charts, so the browser dashboard is the practical panel.
 
 ## Release
 

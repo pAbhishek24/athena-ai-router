@@ -1,7 +1,7 @@
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { executeProvider, getProviderTransport, resolveProviderCommand, classifyFailure: classifyProviderFailure } = require('./providers');
-const { commandExists } = require('./runner');
+const { executeProvider, getProviderTransport, probeProviderStatus, resolveProviderCommand, classifyFailure: classifyProviderFailure } = require('./providers');
+const { commandExists, runCommand } = require('./runner');
 const { appendExchange, recordHandoff, saveState, truncate, updateProviderUsage } = require('./store');
 const { estimateTokens } = require('./usage');
 
@@ -183,12 +183,12 @@ function pickFallbackProvider(config, state, excludeId) {
 }
 
 class Router {
-  constructor({ config, state, cwd, env = process.env, runner = null, fetchImpl = globalThis.fetch, statePath = null, persist = true } = {}) {
+  constructor({ config, state, cwd, env = process.env, runner = runCommand, fetchImpl = globalThis.fetch, statePath = null, persist = true } = {}) {
     this.config = config;
     this.state = state;
     this.cwd = path.resolve(cwd || process.cwd());
     this.env = env;
-    this.runner = runner;
+    this.runner = typeof runner === 'function' ? runner : runCommand;
     this.fetchImpl = fetchImpl;
     this.statePath = statePath;
     this.persist = persist;
@@ -197,6 +197,54 @@ class Router {
   save() {
     if (this.persist && this.statePath) {
       saveState(this.state, this.statePath, this.env);
+    }
+  }
+
+  async refreshProviderStatus() {
+    for (const provider of this.config.providers) {
+      if (provider.enabled === false) {
+        continue;
+      }
+
+      const stats = getProviderStats(this.state, provider.id);
+      try {
+        const status = await probeProviderStatus(provider, {
+          cwd: this.cwd,
+          env: this.env,
+          runner: this.runner,
+          fetchImpl: this.fetchImpl,
+        });
+
+        if (status.health) {
+          stats.health = status.health;
+        }
+        if (status.authState) {
+          stats.authState = status.authState;
+        }
+        if (Object.prototype.hasOwnProperty.call(status, 'accountLabel')) {
+          stats.accountLabel = status.accountLabel;
+        }
+        if (status.statusMessage !== undefined) {
+          stats.statusMessage = status.statusMessage;
+        }
+        if (Object.prototype.hasOwnProperty.call(status, 'usage')) {
+          stats.statusUsage = status.usage || null;
+        }
+        if (Object.prototype.hasOwnProperty.call(status, 'raw')) {
+          stats.statusRaw = status.raw || null;
+        }
+        if (status.lastStatusAt) {
+          stats.lastStatusAt = status.lastStatusAt;
+        }
+        stats.lastError = null;
+      } catch (error) {
+        const message = error && error.message ? error.message : String(error);
+        stats.health = classifyProviderFailure(message);
+        stats.lastError = message;
+        stats.authState = 'error';
+        stats.statusMessage = message;
+        stats.lastStatusAt = new Date().toISOString();
+      }
     }
   }
 
@@ -348,6 +396,10 @@ class Router {
         model: provider.model || '',
         enabled: provider.enabled !== false,
         health: provider.enabled === false ? 'disabled' : stats.health || 'unknown',
+        authState: stats.authState || 'unknown',
+        accountLabel: stats.accountLabel || null,
+        statusMessage: stats.statusMessage || null,
+        statusUsage: stats.statusUsage || null,
         usedTokens: used,
         limitTokens: limit,
         remainingTokens: remaining,
@@ -356,6 +408,7 @@ class Router {
         totalTurns: stats.totalTurns || 0,
         lastError: stats.lastError || null,
         lastSessionRef: stats.lastSessionRef || null,
+        lastStatusAt: stats.lastStatusAt || null,
         isActive: activeProvider ? activeProvider.id === provider.id : false,
       };
     });
@@ -391,6 +444,7 @@ class Router {
   }
 
   async send(prompt) {
+    await this.refreshProviderStatus();
     this.refreshProviderHealth();
     const snapshotBeforeTurn = this.snapshot();
     const providerOrder = buildProviderOrder(this.config, this.state);

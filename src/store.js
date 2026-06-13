@@ -15,9 +15,15 @@ function createProviderStats(provider, limitOverride) {
     cacheReadTokens: 0,
     totalTurns: 0,
     health: 'unknown',
+    authState: 'unknown',
+    accountLabel: null,
+    statusMessage: null,
+    statusUsage: null,
+    statusRaw: null,
     lastError: null,
     lastSessionRef: null,
     lastUsageAt: null,
+    lastStatusAt: null,
   };
 }
 
@@ -178,4 +184,3 @@ module.exports = {
   truncate,
   updateProviderUsage,
 };
-

@@ -73,4 +73,4 @@ Then publish a release from GitHub:
 
 Trusted publishing automatically generates provenance for public packages published from GitHub Actions, so no `--provenance` flag or registry token is needed.
 
-If the package settings page is not available yet because the package has never been published, do one bootstrap publish first, then add the trusted publisher. That is the practical path for brand-new packages.
+If the package settings page is not available yet because the package has never been published, do one bootstrap publish first, then add the trusted publisher. For that bootstrap publish, npm may require a granular access token with package `Read and write` access and `Bypass two-factor authentication` enabled. npm's CLI cannot create that granular token; it must be created on npmjs.com in `Access Tokens`.

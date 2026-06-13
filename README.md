@@ -4,6 +4,8 @@ AI Model Router is a standalone single-terminal controller for Claude, Codex, Ge
 
 It is an independent CLI, not an IDE plugin. You can launch it from any terminal, and an IDE can wrap it through its terminal or task runner if you want tighter workflow integration.
 
+The CLI now runs against a small local daemon so usage state stays alive even after the terminal exits.
+
 It does three things:
 
 1. Tracks token usage per model with a limit/used breakdown.
@@ -18,12 +20,19 @@ It does three things:
 npm install -g ai-model-router
 ```
 
-- `model-router status` prints the current usage table.
-- `model-router serve` launches a local dashboard with pie charts.
-- `model-router panel` launches the same dashboard and opens it in your browser.
+- `model-router status` prints the current usage table and falls back to the locally persisted ledger if the daemon is not reachable yet.
+- `model-router daemon start` keeps the background daemon running.
+- `model-router daemon run` starts the daemon in the foreground for debugging.
+- `model-router daemon status` prints the daemon metadata.
+- `model-router daemon stop` stops the background daemon.
+- `model-router serve` ensures the daemon is running and prints the dashboard URL.
+- `model-router app` launches the native menubar status app and tries to bring up the daemon if it is not already running.
+- `model-router panel` is an alias for `model-router app`.
 - `model-router ask "prompt"` sends one prompt through the active model.
 - `model-router chat` starts an interactive prompt for the active model.
 - `model-router task "prompt"` runs an agent-style workspace task that can read, write, and execute local commands.
+- `model-router shims install` writes optional wrappers for direct Claude/Codex/Gemini CLI usage.
+- `model-router shims status` shows which wrappers are installed.
 - `model-router init` creates a starter config in `~/.ai-model-router/config.json`.
 - If you prefer not to install globally, use `npx model-router status` or `npm start -- status`.
 
@@ -34,6 +43,8 @@ The sample config lives at [`config/router.config.example.json`](./config/router
 By default the runtime state is stored in `~/.ai-model-router`, or in the path pointed to by `AI_MODEL_ROUTER_HOME`.
 
 For migration, the legacy state environment variables are still recognized.
+
+The daemon metadata lives in `~/.ai-model-router/daemon.json`, and optional CLI wrappers are installed into `~/.ai-model-router/shims`.
 
 Local models are configured with `transport: "http"` and a `http.baseUrl`. The router currently understands:
 
@@ -66,8 +77,11 @@ Example shape:
 - Gemini is supported as a configurable adapter with command fallbacks such as `gemini` and `gemni`.
 - Local hosted models are supported through the HTTP transport adapter, so you can mix remote CLI tools and local servers in the same terminal session.
 - Token numbers are normalized from provider output when available and fall back to a conservative estimate when a provider does not report them.
+- `model-router status` and `model-router task` refresh daemon state before each turn, so usage changes made from other terminals or from installed shims show up in the current session.
 - `model-router task` is the closest mode to a CLI IDE. It asks the model for a JSON action plan and executes workspace tools locally, so file edits and shell commands happen from the router instead of only being described in text.
-- `model-router serve --open` or `model-router panel` gives you the live pie-chart view in a browser window. Native system notification centers do not support rich pie charts, so the browser dashboard is the practical panel.
+- `model-router app` or `model-router panel` opens the native menubar app. It uses an embedded WebKit view, has a manual Refresh button, and will try to reconnect the daemon on launch.
+- `model-router serve` is the browser/debug endpoint if you want to inspect the dashboard URL directly.
+- To track direct CLI usage, run `model-router shims install` and source `~/.ai-model-router/shims/env.sh` in the shells that should use the wrappers.
 
 ## Release
 

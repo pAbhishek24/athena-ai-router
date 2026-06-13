@@ -4,7 +4,7 @@
 
 Provide one terminal entrypoint that can work with multiple CLI model providers while keeping track of per-model token usage and automatically failing over when a provider gets too close to its configured budget.
 
-This is a standalone CLI router with a browser dashboard, not an IDE plugin.
+This is a standalone CLI router with a native menubar app, a browser/debug dashboard, and a small background daemon, not an IDE plugin.
 
 ## Requirements
 
@@ -12,7 +12,9 @@ This is a standalone CLI router with a browser dashboard, not an IDE plugin.
 
 Each provider needs a `limit`, `used`, and `remaining` value.
 
-The primary visualization is a browser dashboard served from the router process, rendered with SVG/CSS donut charts. The terminal status command also prints a compact text summary for quick checks.
+The primary visualization is the native menubar app backed by an embedded WebKit view. The router still serves the same dashboard HTML over HTTP for debugging and manual browser access, and the terminal status command prints a compact text summary for quick checks. If the daemon is not reachable, the status command falls back to the locally persisted project ledger instead of failing.
+
+The router now keeps the active project state in a daemon-backed control plane so usage and auth snapshots continue updating after the terminal that started the session exits.
 
 Providers can optionally expose an explicit `status` probe so the router can cache:
 
@@ -68,6 +70,12 @@ The runtime still accepts legacy state environment variables for migration.
 
 The project key is a stable hash of the current working directory, which lets the same terminal controller keep independent histories for multiple projects.
 
+The daemon state is stored separately from project state:
+
+- `~/.ai-model-router/daemon.json`
+- `~/.ai-model-router/shims/manifest.json`
+- `~/.ai-model-router/shims/env.sh`
+
 ## Provider model
 
 Each provider config contains:
@@ -76,10 +84,12 @@ Each provider config contains:
 - `label`
 - `transport` (`command` or `http`)
 - `command` or `commandCandidates`
+- optional `shimName` for direct wrapper installation
 - `args`
 - `budgetTokens`
 - optional `model`
 - optional `http` settings for local or remote servers
+- optional `status` settings for provider auth and usage probes
 
 Provider adapters are responsible for:
 
@@ -108,12 +118,19 @@ The dashboard shows the normalized local total so switching works consistently a
 
 - `init` writes the starter config
 - `status` prints the local ledger
-- `serve` starts the graphical dashboard
-- `panel` starts the graphical dashboard and opens a browser window
+- `daemon run` starts the background server in the foreground
+- `daemon start` starts the background server detached from the shell
+- `daemon status` prints daemon metadata
+- `daemon stop` stops the background server
+- `serve` ensures the daemon is running and prints the graphical dashboard URL
+- `app` launches the native menubar status app and attempts to start or reconnect the daemon
+- `panel` is an alias for `app`
 - `ask` sends a single prompt
 - `chat` opens an interactive loop
 - `task` opens the agent-style workspace executor
 - `switch` forces the active provider for the next turn
+- `shims install` installs optional command wrappers for direct provider CLIs
+- `shims status` prints the shim manifest
 
 ## Local model integration
 
@@ -125,6 +142,18 @@ Recommended patterns:
 - `transport: "http"` plus `http.mode: "ollama-chat"` for Ollama-compatible servers
 - `commandCandidates` for CLI tools with more than one possible binary name, such as `gemini` and a fallback alias
 
+## Shim mode
+
+Some provider usage happens outside the router, especially when users run Claude/Codex/Gemini directly in other terminals.
+
+The shim layer addresses that by generating wrappers in `~/.ai-model-router/shims`. Each wrapper:
+
+- calls the real provider binary
+- parses its output for session and usage metadata
+- posts the usage snapshot back to the daemon
+
+Users then prepend the shims directory to `PATH` by sourcing `~/.ai-model-router/shims/env.sh`.
+
 ## Verification
 
 Tests cover:
@@ -134,4 +163,6 @@ Tests cover:
 - prompt envelope construction
 - command fallback resolution
 - HTTP provider execution
+- daemon client state refresh
+- shim installation and usage reporting
 - dashboard rendering and API responses

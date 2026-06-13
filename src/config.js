@@ -117,6 +117,7 @@ function normalizeProvider(provider, index) {
   const transport = String(provider.transport || (provider.http || provider.baseUrl ? 'http' : 'command')).trim().toLowerCase() || 'command';
   const commandCandidates = normalizeCommandCandidates(provider);
   const command = provider.command && typeof provider.command === 'string' ? provider.command.trim() : commandCandidates[0] || '';
+  const shimName = String(provider.shimName || path.basename(command || commandCandidates[0] || provider.id)).trim() || provider.id;
 
   if (transport !== 'http' && !command && commandCandidates.length === 0) {
     throw new Error(`Provider ${provider.id} is missing a command or commandCandidates entry`);
@@ -128,6 +129,7 @@ function normalizeProvider(provider, index) {
     transport,
     command,
     commandCandidates,
+    shimName,
     args: Array.isArray(provider.args) ? provider.args.slice() : [],
     budgetTokens: Number.isFinite(provider.budgetTokens) ? provider.budgetTokens : defaultConfig.providers[index]?.budgetTokens || 0,
     model: typeof provider.model === 'string' ? provider.model : '',

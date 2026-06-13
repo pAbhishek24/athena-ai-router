@@ -3,13 +3,17 @@ const path = require('path');
 const readline = require('readline/promises');
 const { spawn } = require('child_process');
 const { stdin, stdout, stderr } = require('process');
+const { URL } = require('url');
 const { loadConfig, saveConfig } = require('./config');
-const { createDashboardServer, renderStatusText } = require('./dashboard');
 const { runWorkspaceTask } = require('./agent');
-const { createRouter } = require('./router');
 const { ensureRouterStructure, getConfigPath } = require('./paths');
-const { runCommand } = require('./runner');
+const { createDaemonClient, createDaemonServer, ensureDaemonRunning, readDaemonMetadata, stopDaemon } = require('./daemon');
+const { launchNativeStatusApp } = require('./native-app');
+const { installShims, removeShims, runShimExec, summarizeShims } = require('./shims');
+const { renderStatusText } = require('./dashboard');
+const { createRouter } = require('./router');
 const { loadState } = require('./store');
+const { runCommand } = require('./runner');
 
 const APP_NAME = 'AI Model Router';
 const COMMAND_NAME = 'model-router';
@@ -21,19 +25,22 @@ function printUsage() {
     'Usage:',
     `  ${COMMAND_NAME} init`,
     `  ${COMMAND_NAME} status [--json]`,
-    `  ${COMMAND_NAME} serve [--host HOST] [--port PORT] [--open]`,
+    `  ${COMMAND_NAME} daemon <run|start|status|stop> [--host HOST] [--port PORT]`,
+    `  ${COMMAND_NAME} serve [--open]`,
+    `  ${COMMAND_NAME} app`,
     `  ${COMMAND_NAME} panel`,
     `  ${COMMAND_NAME} ask [prompt...]`,
     `  ${COMMAND_NAME} chat`,
     `  ${COMMAND_NAME} task [prompt...]`,
     `  ${COMMAND_NAME} switch <providerId>`,
+    `  ${COMMAND_NAME} shims <install|uninstall|status|exec>`,
     '',
     'Options:',
     '  --cwd DIR       Use a different project root',
     '  --config FILE   Use a different config file',
     '  --force         Overwrite the starter config on init',
     '  --json          Emit JSON for status or ask',
-    '  --open          Open the dashboard in a browser after serve starts',
+    '  --open          Open the browser dashboard after ensuring the daemon is running',
     '',
   ].join('\n');
   stdout.write(`${text}\n`);
@@ -99,11 +106,36 @@ function readStdinIfAvailable() {
     }
 
     let buffer = '';
-    stdin.setEncoding('utf8');
-    stdin.on('data', (chunk) => {
+    let settled = false;
+    let timer = null;
+    const onData = (chunk) => {
       buffer += chunk;
-    });
-    stdin.on('end', () => resolve(buffer.trim()));
+    };
+    const cleanup = () => {
+      stdin.removeListener('data', onData);
+      stdin.removeListener('end', onEnd);
+      stdin.removeListener('error', onError);
+      stdin.pause();
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+    };
+    const finish = (value) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      resolve(value);
+    };
+    const onEnd = () => finish(buffer.trim());
+    const onError = () => finish('');
+    timer = setTimeout(() => finish(buffer.trim()), 25);
+    stdin.setEncoding('utf8');
+    stdin.on('data', onData);
+    stdin.on('end', onEnd);
+    stdin.on('error', onError);
   });
 }
 
@@ -112,6 +144,37 @@ async function createRuntime(argv) {
   const command = parsed._[0] || 'status';
   const commandArgs = parsed._.slice(1);
 
+  const configBundle = loadConfig(process.env, { configPath: parsed.configPath || undefined });
+  const daemonInfo = await ensureDaemonRunning(process.env, {
+    configPath: configBundle.configPath,
+    timeoutMs: 20000,
+  });
+  if (!daemonInfo.ready) {
+    throw new Error(`Daemon is not reachable at ${daemonInfo.url}`);
+  }
+  const router = createDaemonClient({
+    cwd: parsed.cwd,
+    env: process.env,
+    config: configBundle.config,
+    baseUrl: daemonInfo.url,
+  });
+  await router.refreshProviderStatus();
+
+  return {
+    command,
+    commandArgs,
+    parsed,
+    router,
+    client: router,
+    configBundle,
+    daemonInfo,
+  };
+}
+
+async function createStatusRuntime(argv) {
+  const parsed = parseArgs(argv);
+  const command = parsed._[0] || 'status';
+  const commandArgs = parsed._.slice(1);
   const configBundle = loadConfig(process.env, { configPath: parsed.configPath || undefined });
   const { state, statePath } = loadState(configBundle.config, parsed.cwd, process.env);
   const router = createRouter({
@@ -123,15 +186,25 @@ async function createRuntime(argv) {
     statePath,
     persist: true,
   });
-  await router.refreshProviderStatus();
+
+  try {
+    await router.refreshProviderStatus();
+  } catch {
+    // Keep the locally persisted snapshot if provider probing is unavailable.
+  }
 
   return {
     command,
     commandArgs,
     parsed,
     router,
+    client: router,
     configBundle,
-    statePath,
+    daemonInfo: {
+      started: false,
+      ready: false,
+      url: readDaemonMetadata(process.env)?.url || `http://${configBundle.config.dashboard.host || '127.0.0.1'}:${configBundle.config.dashboard.port || 3077}`,
+    },
   };
 }
 
@@ -163,6 +236,14 @@ function openUrl(url) {
   });
 }
 
+function makeDashboardUrl(baseUrl, cwd) {
+  const url = new URL(String(baseUrl || '').trim());
+  if (cwd) {
+    url.searchParams.set('cwd', path.resolve(cwd));
+  }
+  return url.toString();
+}
+
 async function runInit(parsed) {
   ensureRouterStructure(process.env);
   const configPath = parsed.configPath || getConfigPath(process.env);
@@ -175,7 +256,14 @@ async function runInit(parsed) {
   }
 }
 
-function printStatus(router, json = false) {
+async function printStatus(router, json = false) {
+  if (router && typeof router.refreshProviderStatus === 'function') {
+    try {
+      await router.refreshProviderStatus();
+    } catch {
+      // Render the last cached snapshot if the refresh fails.
+    }
+  }
   const snapshot = router.snapshot();
   if (json) {
     stdout.write(`${JSON.stringify(snapshot, null, 2)}\n`);
@@ -297,6 +385,13 @@ async function runChat(router) {
     }
 
     if (input === '/status') {
+      if (typeof router.refreshProviderStatus === 'function') {
+        try {
+          await router.refreshProviderStatus();
+        } catch {
+          // Fall back to the cached snapshot.
+        }
+      }
       stdout.write(`${renderStatusText(router.snapshot())}\n`);
       continue;
     }
@@ -340,19 +435,27 @@ async function runChat(router) {
 }
 
 async function runServe(router, parsed) {
-  const server = createDashboardServer(router, {
-    host: parsed.host || router.config.dashboard.host,
-    port: Number.isFinite(parsed.port) ? parsed.port : router.config.dashboard.port,
+  const dashboardUrl = makeDashboardUrl(router.daemonUrl, router.cwd || parsed.cwd || process.cwd());
+  stdout.write(`Dashboard ready at ${dashboardUrl}\n`);
+  if (parsed.open) {
+    await openUrl(dashboardUrl);
+  }
+}
+
+async function runAppCommand(parsed) {
+  const configBundle = loadConfig(process.env, { configPath: parsed.configPath || undefined });
+  const dashboardUrl = makeDashboardUrl(
+    readDaemonMetadata(process.env)?.url || `http://${configBundle.config.dashboard.host || '127.0.0.1'}:${configBundle.config.dashboard.port || 3077}`,
+    parsed.cwd || process.cwd()
+  );
+  const appInfo = launchNativeStatusApp(process.env, {
+    url: dashboardUrl,
+    configPath: configBundle.configPath,
+    title: APP_NAME,
   });
 
-  const info = await server.listen();
-  stdout.write(`Dashboard ready at ${info.url}\n`);
-  stdout.write('Press Ctrl+C to stop.\n');
-  if (parsed.open) {
-    await openUrl(info.url);
-  }
-
-  await new Promise(() => {});
+  stdout.write(`Native status app started (pid ${appInfo.pid})\n`);
+  stdout.write(`Dashboard URL: ${dashboardUrl}\n`);
 }
 
 async function runSwitch(router, providerId) {
@@ -367,6 +470,136 @@ async function runSwitch(router, providerId) {
   stdout.write(`Active provider set to ${providerId}\n`);
 }
 
+async function runDaemonCommand(parsed, commandArgs) {
+  const subcommand = commandArgs[0] || 'status';
+  const configBundle = loadConfig(process.env, { configPath: parsed.configPath || undefined });
+
+  if (subcommand === 'run') {
+    const server = await createDaemonServer(process.env, {
+      configPath: configBundle.configPath,
+      host: parsed.host || configBundle.config.dashboard.host,
+      port: Number.isFinite(parsed.port) ? parsed.port : configBundle.config.dashboard.port,
+    });
+
+    const info = await server.listen();
+    const dashboardUrl = makeDashboardUrl(info.url, parsed.cwd || process.cwd());
+    stdout.write(`Daemon running at ${info.url}\n`);
+    stdout.write(`Dashboard: ${dashboardUrl}\n`);
+    if (parsed.open) {
+      await openUrl(dashboardUrl);
+    }
+
+    const shutdown = async () => {
+      try {
+        await server.close();
+      } finally {
+        process.exit(0);
+      }
+    };
+
+    process.once('SIGINT', shutdown);
+    process.once('SIGTERM', shutdown);
+    await new Promise(() => {});
+    return;
+  }
+
+  if (subcommand === 'start') {
+    const info = await ensureDaemonRunning(process.env, { configPath: configBundle.configPath, timeoutMs: 20000 });
+    if (!info.ready) {
+      throw new Error(`Daemon is not reachable at ${info.url}`);
+    }
+    const dashboardUrl = makeDashboardUrl(info.url, parsed.cwd || process.cwd());
+    stdout.write(`${info.started ? 'Started' : 'Already running'} daemon at ${info.url}\n`);
+    stdout.write(`Dashboard: ${dashboardUrl}\n`);
+    if (parsed.open) {
+      await openUrl(dashboardUrl);
+    }
+    return;
+  }
+
+  if (subcommand === 'status') {
+    const metadata = readDaemonMetadata(process.env);
+    if (!metadata) {
+      stdout.write('Daemon is not running\n');
+      return;
+    }
+    const info = {
+      pid: metadata.pid,
+      url: metadata.url,
+      host: metadata.host,
+      port: metadata.port,
+      startedAt: metadata.startedAt,
+      configPath: metadata.configPath,
+      pollMs: metadata.pollMs,
+    };
+    stdout.write(`${JSON.stringify(info, null, 2)}\n`);
+    return;
+  }
+
+  if (subcommand === 'stop') {
+    const result = stopDaemon(process.env);
+    if (!result.ok) {
+      stdout.write(`${result.error}\n`);
+      return;
+    }
+    stdout.write(`Stopped daemon pid ${result.pid}\n`);
+    return;
+  }
+
+  throw new Error(`Unknown daemon subcommand: ${subcommand}`);
+}
+
+async function runShimsCommand(parsed, commandArgs) {
+  const subcommand = commandArgs[0] || 'status';
+  const configBundle = loadConfig(process.env, { configPath: parsed.configPath || undefined });
+
+  if (subcommand === 'install') {
+    const result = installShims(configBundle.config, process.env);
+    stdout.write(`Shims installed in ${result.shimsDir}\n`);
+    stdout.write(`Source ${result.envFile} or add ${result.shimsDir} to your PATH.\n`);
+    const installed = result.shims.filter((shim) => shim.status === 'installed');
+    const skipped = result.shims.filter((shim) => shim.status !== 'installed');
+    if (installed.length) {
+      stdout.write(`Installed: ${installed.map((shim) => shim.shimName).join(', ')}\n`);
+    }
+    if (skipped.length) {
+      stdout.write(`Skipped: ${skipped.map((shim) => `${shim.shimName} (${shim.status})`).join(', ')}\n`);
+    }
+    return;
+  }
+
+  if (subcommand === 'uninstall') {
+    const result = removeShims(process.env);
+    stdout.write(`Removed ${result.removed.length} shim files\n`);
+    return;
+  }
+
+  if (subcommand === 'status') {
+    const result = summarizeShims(process.env);
+    if (!result.exists) {
+      stdout.write(`No shim manifest found in ${result.shimsDir}\n`);
+      stdout.write(`Run ${COMMAND_NAME} shims install to create provider wrappers.\n`);
+      return;
+    }
+
+    stdout.write(`Shims directory: ${result.shimsDir}\n`);
+    stdout.write(`PATH helper: ${result.pathHint}\n`);
+    for (const entry of result.entries) {
+      stdout.write(
+        `- ${entry.shimName}: ${entry.providerId} ${entry.installed ? '(installed)' : '(missing)'}${entry.realCommand ? ` -> ${entry.realCommand}` : ''}\n`
+      );
+    }
+    return;
+  }
+
+  if (subcommand === 'exec') {
+    await runShimExec(commandArgs.slice(1), process.env, { configPath: configBundle.configPath, cwd: parsed.cwd });
+    return;
+  }
+
+  throw new Error(`Unknown shims subcommand: ${subcommand}`);
+}
+
 async function main(argv = process.argv.slice(2)) {
   if (!argv.length) {
     printUsage();
@@ -378,7 +611,9 @@ async function main(argv = process.argv.slice(2)) {
     return;
   }
 
-  const { command, commandArgs, parsed, router } = await createRuntime(argv);
+  const parsed = parseArgs(argv);
+  const command = parsed._[0] || 'status';
+  const commandArgs = parsed._.slice(1);
 
   if (parsed.help) {
     printUsage();
@@ -390,10 +625,33 @@ async function main(argv = process.argv.slice(2)) {
     return;
   }
 
-  if (command === 'status') {
-    printStatus(router, parsed.json);
+  if (command === 'daemon') {
+    await runDaemonCommand(parsed, commandArgs);
     return;
   }
+
+  if (command === 'shims') {
+    await runShimsCommand(parsed, commandArgs);
+    return;
+  }
+
+  if (command === 'app') {
+    await runAppCommand(parsed);
+    return;
+  }
+
+  if (command === 'panel') {
+    await runAppCommand(parsed);
+    return;
+  }
+
+  if (command === 'status') {
+    const { router } = await createStatusRuntime(argv);
+    await printStatus(router, parsed.json);
+    return;
+  }
+
+  const { router } = await createRuntime(argv);
 
   if (command === 'ask' || command === 'run') {
     await runAsk(router, parsed, commandArgs);
@@ -415,12 +673,6 @@ async function main(argv = process.argv.slice(2)) {
     return;
   }
 
-  if (command === 'panel') {
-    parsed.open = true;
-    await runServe(router, parsed);
-    return;
-  }
-
   if (command === 'switch') {
     await runSwitch(router, commandArgs[0]);
     return;
@@ -431,6 +683,7 @@ async function main(argv = process.argv.slice(2)) {
 
 module.exports = {
   createRuntime,
+  createStatusRuntime,
   main,
   parseArgs,
   printStatus,

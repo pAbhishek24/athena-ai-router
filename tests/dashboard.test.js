@@ -87,6 +87,10 @@ test('dashboard server exposes the state API and active-provider switch', async 
   const html = buildDashboardHtml(router.snapshot());
   assert.match(html, /AI Model Router/);
   assert.match(html, /conic-gradient/);
+  assert.match(html, /const PROJECT_CWD =/);
+  assert.match(html, /STATE_URL = PROJECT_CWD/);
+  assert.match(html, /Refresh<\/button>/);
+  assert.doesNotMatch(html, /setInterval\(refresh/);
 
   const stateResponse = await invoke('GET', '/api/state');
   assert.equal(stateResponse.statusCode, 200);

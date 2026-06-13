@@ -7,6 +7,7 @@ const { estimateTokens } = require('./usage');
 
 const DEFAULT_RESERVED_OUTPUT_TOKENS = 1024;
 const UNAVAILABLE_HEALTH = new Set(['missing', 'auth', 'sandbox', 'offline']);
+const HARD_PROBE_HEALTH = new Set(['ready', 'auth', 'missing', 'offline', 'sandbox', 'disabled']);
 
 function compactText(text, maxChars) {
   return truncate(String(text || ''), maxChars);
@@ -215,11 +216,13 @@ class Router {
           fetchImpl: this.fetchImpl,
         });
 
-        if (status.health) {
+        if (status.health && HARD_PROBE_HEALTH.has(status.health)) {
           stats.health = status.health;
+        } else if (status.health === 'error' && (!stats.health || stats.health === 'unknown')) {
+          stats.health = 'ready';
         }
         if (status.authState) {
-          stats.authState = status.authState;
+          stats.authState = status.authState === 'error' ? 'unknown' : status.authState;
         }
         if (Object.prototype.hasOwnProperty.call(status, 'accountLabel')) {
           stats.accountLabel = status.accountLabel;
@@ -239,11 +242,16 @@ class Router {
         stats.lastError = null;
       } catch (error) {
         const message = error && error.message ? error.message : String(error);
-        stats.health = classifyProviderFailure(message);
+        const failureType = classifyProviderFailure(message);
         stats.lastError = message;
-        stats.authState = 'error';
+        stats.authState = failureType === 'auth' ? 'auth' : 'unknown';
         stats.statusMessage = message;
         stats.lastStatusAt = new Date().toISOString();
+        if (HARD_PROBE_HEALTH.has(failureType)) {
+          stats.health = failureType;
+        } else if (!stats.health || stats.health === 'unknown') {
+          stats.health = 'ready';
+        }
       }
     }
   }

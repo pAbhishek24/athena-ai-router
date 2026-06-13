@@ -267,3 +267,43 @@ test('router uses the built-in command runner when none is provided', async () =
   assert.match(result.text, /Current user request:/);
   assert.match(result.text, /Inspect the workspace/);
 });
+
+test('router keeps a provider available when its status probe fails generically', async () => {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-model-router-'));
+  const config = {
+    version: 1,
+    defaultProviderId: 'local',
+    switchThreshold: 0.99,
+    dashboard: { host: '127.0.0.1', port: 3077, refreshMs: 2000 },
+    providers: [
+      {
+        id: 'local',
+        label: 'Local',
+        command: 'node',
+        args: ['-e', 'process.stdout.write(process.argv.slice(1).join(" "))'],
+        budgetTokens: 5000,
+        model: '',
+        enabled: true,
+        status: {
+          command: 'node',
+          args: ['-e', 'process.stderr.write("browser login required"); process.exit(1);'],
+        },
+      },
+    ],
+  };
+  const state = createDefaultState(config, cwd);
+  state.providerState.local.health = 'unknown';
+  state.activeProviderId = 'local';
+
+  const router = createRouter({
+    config,
+    state,
+    cwd,
+  });
+
+  await router.refreshProviderStatus();
+
+  assert.equal(router.state.providerState.local.health, 'ready');
+  assert.equal(router.state.providerState.local.authState, 'ready');
+  assert.match(router.state.providerState.local.statusMessage || '', /browser login required/);
+});

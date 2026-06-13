@@ -60,6 +60,18 @@ function getProjectsDir(env = process.env) {
   return path.join(getRouterHome(env), 'projects');
 }
 
+function getDaemonStatePath(env = process.env) {
+  return path.join(getRouterHome(env), 'daemon.json');
+}
+
+function getShimsDir(env = process.env) {
+  return path.join(getRouterHome(env), 'shims');
+}
+
+function getAppDir(env = process.env) {
+  return path.join(getRouterHome(env), 'app');
+}
+
 function getProjectKey(cwd) {
   return crypto.createHash('sha1').update(path.resolve(cwd)).digest('hex').slice(0, 12);
 }
@@ -71,15 +83,20 @@ function getProjectStatePath(cwd, env = process.env) {
 function ensureRouterStructure(env = process.env) {
   const home = ensureDirSync(getRouterHome(env));
   const projects = ensureDirSync(getProjectsDir(env));
-  return { home, projects };
+  const shims = ensureDirSync(getShimsDir(env));
+  const app = ensureDirSync(getAppDir(env));
+  return { home, projects, shims, app };
 }
 
 module.exports = {
   ensureDirSync,
   ensureRouterStructure,
+  getDaemonStatePath,
   getConfigPath,
   getProjectKey,
   getProjectStatePath,
   getProjectsDir,
+  getAppDir,
+  getShimsDir,
   getRouterHome,
 };

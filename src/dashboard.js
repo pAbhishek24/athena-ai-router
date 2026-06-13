@@ -85,7 +85,6 @@ function renderStatusText(snapshot) {
 
 function buildDashboardHtml(snapshot) {
   const initialData = JSON.stringify(snapshot).replace(/</g, '\\u003c');
-  const refreshMs = snapshot.dashboard.refreshMs || 2000;
 
   return `<!doctype html>
 <html lang="en">
@@ -191,6 +190,9 @@ function buildDashboardHtml(snapshot) {
       margin-bottom: 24px;
       color: var(--muted);
       font-size: 0.92rem;
+    }
+    .toolbar .spacer {
+      flex: 1 1 auto;
     }
     .pill {
       display: inline-flex;
@@ -415,7 +417,9 @@ function buildDashboardHtml(snapshot) {
       <span class="pill"><strong id="total-used">0</strong> used</span>
       <span class="pill"><strong id="total-limit">0</strong> budgeted</span>
       <span class="pill">Project: <strong id="project-root">-</strong></span>
-      <span class="pill">Refresh every <strong>${Math.round(refreshMs / 1000)}s</strong></span>
+      <span class="pill">Refresh: <strong>manual</strong></span>
+      <span class="spacer"></span>
+      <button id="refresh-button" class="primary" type="button">Refresh</button>
     </div>
 
     <section class="cards" id="cards"></section>
@@ -434,7 +438,9 @@ function buildDashboardHtml(snapshot) {
 
   <script>
     window.__INITIAL_DATA__ = ${initialData};
-    const REFRESH_MS = ${JSON.stringify(refreshMs)};
+    const PROJECT_CWD = ${JSON.stringify(encodeURIComponent(snapshot.cwd || ''))};
+    const STATE_URL = PROJECT_CWD ? '/api/state?cwd=' + PROJECT_CWD : '/api/state';
+    const ACTIVE_URL = PROJECT_CWD ? '/api/active?cwd=' + PROJECT_CWD : '/api/active';
 
     function formatNumber(value) {
       return new Intl.NumberFormat('en-US').format(Number.isFinite(value) ? value : 0);
@@ -552,10 +558,14 @@ function buildDashboardHtml(snapshot) {
     }
 
     async function refresh() {
-      const response = await fetch('/api/state', { cache: 'no-store' });
+      const response = await fetch(STATE_URL, { cache: 'no-store' });
       const snapshot = await response.json();
       render(snapshot);
     }
+
+    document.getElementById('refresh-button').addEventListener('click', () => {
+      refresh();
+    });
 
     document.addEventListener('click', async (event) => {
       const button = event.target.closest('[data-provider-id]');
@@ -564,7 +574,7 @@ function buildDashboardHtml(snapshot) {
       }
       button.disabled = true;
       try {
-        await fetch('/api/active', {
+        await fetch(ACTIVE_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ providerId: button.dataset.providerId }),
@@ -576,8 +586,6 @@ function buildDashboardHtml(snapshot) {
     });
 
     render(window.__INITIAL_DATA__);
-    refresh();
-    setInterval(refresh, REFRESH_MS);
   </script>
 </body>
 </html>`;

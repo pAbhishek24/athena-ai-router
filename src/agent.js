@@ -342,6 +342,13 @@ async function runWorkspaceTask(router, userPrompt, options = {}) {
   let lastResult = null;
 
   for (let turn = 0; turn < maxTurns; turn += 1) {
+    if (typeof router.refreshProviderStatus === 'function') {
+      try {
+        await router.refreshProviderStatus();
+      } catch {
+        // Keep going with the cached snapshot if the daemon refresh fails.
+      }
+    }
     const snapshot = router.snapshot();
     const agentPrompt = buildAgentPrompt(snapshot, nextPrompt, trace);
     const result = await router.send(agentPrompt);

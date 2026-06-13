@@ -8,17 +8,20 @@ const { createRouter } = require('./router');
 const { ensureRouterStructure, getConfigPath } = require('./paths');
 const { loadState } = require('./store');
 
+const APP_NAME = 'AI Model Router';
+const COMMAND_NAME = 'model-router';
+
 function printUsage() {
   const text = [
-    'Athena AI Router',
+    APP_NAME,
     '',
     'Usage:',
-    '  athena-router init',
-    '  athena-router status [--json]',
-    '  athena-router serve [--host HOST] [--port PORT]',
-    '  athena-router ask [prompt...]',
-    '  athena-router chat',
-    '  athena-router switch <providerId>',
+    `  ${COMMAND_NAME} init`,
+    `  ${COMMAND_NAME} status [--json]`,
+    `  ${COMMAND_NAME} serve [--host HOST] [--port PORT]`,
+    `  ${COMMAND_NAME} ask [prompt...]`,
+    `  ${COMMAND_NAME} chat`,
+    `  ${COMMAND_NAME} switch <providerId>`,
     '',
     'Options:',
     '  --cwd DIR       Use a different project root',
@@ -188,10 +191,10 @@ async function runAsk(router, parsed, commandArgs) {
 
 async function runChat(router) {
   const rl = readline.createInterface({ input: stdin, output: stdout, terminal: true });
-  stdout.write('Athena AI Router chat. Use /status, /switch <providerId>, /exit.\n');
+  stdout.write(`${APP_NAME} chat. Use /status, /switch <providerId>, /exit.\n`);
 
   while (true) {
-    const line = await rl.question('athena> ');
+    const line = await rl.question('model-router> ');
     const input = line.trim();
     if (!input) {
       continue;

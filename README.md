@@ -1,6 +1,6 @@
-# Athena AI Router
+# AI Model Router
 
-Athena AI Router is a standalone single-terminal controller for Claude, Codex, Gemini, and local HTTP-hosted LLMs.
+AI Model Router is a standalone single-terminal controller for Claude, Codex, Gemini, and local HTTP-hosted LLMs.
 
 It is an independent CLI, not an IDE plugin. You can launch it from any terminal, and an IDE can wrap it through its terminal or task runner if you want tighter workflow integration.
 
@@ -15,21 +15,23 @@ It does three things:
 - Install globally:
 
 ```bash
-npm install -g athena-ai-router
+npm install -g ai-model-router
 ```
 
-- `athena-router status` prints the current usage table.
-- `athena-router serve` launches a local dashboard with pie charts.
-- `athena-router ask "prompt"` sends one prompt through the active model.
-- `athena-router chat` starts an interactive terminal loop.
-- `athena-router init` creates a starter config in `~/.athena-router/config.json`.
-- If you prefer not to install globally, use `npx athena-router status` or `npm start -- status`.
+- `model-router status` prints the current usage table.
+- `model-router serve` launches a local dashboard with pie charts.
+- `model-router ask "prompt"` sends one prompt through the active model.
+- `model-router chat` starts an interactive terminal loop.
+- `model-router init` creates a starter config in `~/.ai-model-router/config.json`.
+- If you prefer not to install globally, use `npx model-router status` or `npm start -- status`.
 
 ## Configuration
 
 The sample config lives at [`config/router.config.example.json`](./config/router.config.example.json).
 
-By default the runtime state is stored in `~/.athena-router`, or in the path pointed to by `ATHENA_ROUTER_HOME`.
+By default the runtime state is stored in `~/.ai-model-router`, or in the path pointed to by `AI_MODEL_ROUTER_HOME`.
+
+For migration, the legacy state environment variables are still recognized.
 
 Local models are configured with `transport: "http"` and a `http.baseUrl`. The router currently understands:
 
@@ -55,7 +57,7 @@ This project uses npm trusted publishing, so the GitHub Actions release job does
 
 To enable trusted publishing in npm:
 
-1. Open the package page on npmjs.com.
+1. Open the package page on npmjs.com for `ai-model-router`.
 2. Go to `Settings` -> `Trusted publishing`.
 3. Add a trusted publisher for GitHub Actions with these values:
    - Organization or user: `pAbhishek24`

@@ -1,15 +1,11 @@
 {
-  "name": "athena-ai-router",
+  "name": "ai-model-router",
   "version": "1.0.0",
   "description": "Terminal router for Claude, Codex, Gemini, and local HTTP-hosted LLMs with token tracking and automatic model handoff",
   "type": "commonjs",
   "main": "src/cli.js",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/pAbhishek24/athena-ai-router.git"
-  },
   "bin": {
-    "athena-router": "./bin/athena-router.js"
+    "model-router": "./bin/model-router.js"
   },
   "files": [
     "bin/",
@@ -19,8 +15,8 @@
     "src/"
   ],
   "scripts": {
-    "start": "node bin/athena-router.js",
-    "dev": "node bin/athena-router.js",
+    "start": "node bin/model-router.js",
+    "dev": "node bin/model-router.js",
     "test": "node --test",
     "prepublishOnly": "npm test"
   },

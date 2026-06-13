@@ -38,7 +38,7 @@ function createConfig() {
 }
 
 test('dashboard server exposes the state API and active-provider switch', async () => {
-  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'athena-router-'));
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-model-router-'));
   const config = createConfig();
   const state = createDefaultState(config, cwd);
   state.providerState.claude.usedTokens = 1200;
@@ -85,7 +85,7 @@ test('dashboard server exposes the state API and active-provider switch', async 
   }
 
   const html = buildDashboardHtml(router.snapshot());
-  assert.match(html, /Athena AI Router/);
+  assert.match(html, /AI Model Router/);
   assert.match(html, /conic-gradient/);
 
   const stateResponse = await invoke('GET', '/api/state');

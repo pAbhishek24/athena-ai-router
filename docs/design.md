@@ -1,4 +1,4 @@
-# Design
+# AI Model Router Design
 
 ## Goal
 
@@ -37,8 +37,10 @@ When the router moves from one provider to another, it flattens the shared ledge
 
 State lives outside the repo by default:
 
-- `~/.athena-router/config.json`
-- `~/.athena-router/projects/<project-key>.json`
+- `~/.ai-model-router/config.json`
+- `~/.ai-model-router/projects/<project-key>.json`
+
+The runtime still accepts legacy state environment variables for migration.
 
 The project key is a stable hash of the current working directory, which lets the same terminal controller keep independent histories for multiple projects.
 

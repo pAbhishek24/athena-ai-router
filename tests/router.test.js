@@ -46,7 +46,7 @@ function createState(config, cwd) {
 }
 
 test('router switches away from a provider at the threshold without losing context', async () => {
-  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'athena-router-'));
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-model-router-'));
   const config = createConfig();
   const state = createState(config, cwd);
   const calls = [];
@@ -95,7 +95,7 @@ test('router switches away from a provider at the threshold without losing conte
 });
 
 test('router falls back to another provider when the active one fails', async () => {
-  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'athena-router-'));
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-model-router-'));
   const config = createConfig();
   const state = createDefaultState(config, cwd);
   state.providerState.claude.usedTokens = 1200;
@@ -155,7 +155,7 @@ test('router falls back to another provider when the active one fails', async ()
 });
 
 test('router can hand off from a CLI provider to an HTTP local model', async () => {
-  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'athena-router-'));
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-model-router-'));
   const config = {
     ...createConfig(),
     providers: [

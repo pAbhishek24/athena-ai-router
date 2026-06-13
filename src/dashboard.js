@@ -2,6 +2,7 @@ const http = require('http');
 const { URL } = require('url');
 
 const COLORS = ['#f59e0b', '#22c55e', '#06b6d4', '#f97316', '#ef4444', '#84cc16'];
+const APP_NAME = 'AI Model Router';
 
 function escapeHtml(value) {
   return String(value)
@@ -28,7 +29,7 @@ function renderProgressBar(ratio, width = 22) {
 
 function renderStatusText(snapshot) {
   const lines = [];
-  lines.push('Athena AI Router');
+  lines.push(APP_NAME);
   lines.push(`Project: ${snapshot.cwd}`);
   lines.push(`Switch threshold: ${(snapshot.threshold * 100).toFixed(1)}%`);
   lines.push(`Active provider: ${snapshot.activeProvider ? snapshot.activeProvider.label : 'none'}`);
@@ -70,7 +71,7 @@ function buildDashboardHtml(snapshot) {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Athena AI Router</title>
+  <title>${APP_NAME}</title>
   <style>
     :root {
       color-scheme: dark;
@@ -374,7 +375,7 @@ function buildDashboardHtml(snapshot) {
   <div class="shell">
     <section class="hero">
       <div>
-        <h1 class="title">Athena AI Router</h1>
+        <h1 class="title">${APP_NAME}</h1>
         <p class="subtitle">One terminal controller for Claude, Codex, Gemini, and local HTTP-hosted models. The dashboard shows per-model limits, current usage, and the automatic handoff path when a model gets too close to its budget.</p>
       </div>
       <div class="hero-meta">

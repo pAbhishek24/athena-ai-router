@@ -126,7 +126,7 @@ function normalizeConfig(rawConfig = {}) {
 }
 
 function loadConfig(env = process.env, options = {}) {
-  const configPath = options.configPath || env.ATHENA_ROUTER_CONFIG || getConfigPath(env);
+  const configPath = options.configPath || env.AI_MODEL_ROUTER_CONFIG || env.ATHENA_ROUTER_CONFIG || getConfigPath(env);
   let raw = {};
 
   if (fs.existsSync(configPath)) {
@@ -141,7 +141,7 @@ function loadConfig(env = process.env, options = {}) {
 }
 
 function saveConfig(config, env = process.env, options = {}) {
-  const configPath = options.configPath || env.ATHENA_ROUTER_CONFIG || getConfigPath(env);
+  const configPath = options.configPath || env.AI_MODEL_ROUTER_CONFIG || env.ATHENA_ROUTER_CONFIG || getConfigPath(env);
   ensureRouterStructure(env);
   fs.mkdirSync(path.dirname(configPath), { recursive: true });
   fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);

@@ -49,7 +49,7 @@ test('buildInvocation builds a Codex resume command', () => {
 });
 
 test('resolveProviderCommand falls back across Gemini candidate names', () => {
-  const binDir = fs.mkdtempSync(path.join(os.tmpdir(), 'athena-router-bin-'));
+  const binDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-model-router-bin-'));
   const gemniPath = path.join(binDir, 'gemni');
   fs.writeFileSync(gemniPath, '#!/bin/sh\nexit 0\n');
   fs.chmodSync(gemniPath, 0o755);

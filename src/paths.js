@@ -9,18 +9,50 @@ function ensureDirSync(dirPath) {
 }
 
 function getRouterHome(env = process.env) {
+  if (env.AI_MODEL_ROUTER_HOME) {
+    return path.resolve(env.AI_MODEL_ROUTER_HOME);
+  }
+
   if (env.ATHENA_ROUTER_HOME) {
     return path.resolve(env.ATHENA_ROUTER_HOME);
   }
 
   if (env.XDG_STATE_HOME) {
-    return path.join(path.resolve(env.XDG_STATE_HOME), 'athena-router');
+    const newHome = path.join(path.resolve(env.XDG_STATE_HOME), 'ai-model-router');
+    if (fs.existsSync(newHome)) {
+      return newHome;
+    }
+
+    const legacyHome = path.join(path.resolve(env.XDG_STATE_HOME), 'athena-router');
+    if (fs.existsSync(legacyHome)) {
+      return legacyHome;
+    }
+
+    return newHome;
   }
 
-  return path.join(os.homedir(), '.athena-router');
+  const newHome = path.join(os.homedir(), '.ai-model-router');
+  if (fs.existsSync(newHome)) {
+    return newHome;
+  }
+
+  const legacyHome = path.join(os.homedir(), '.athena-router');
+  if (fs.existsSync(legacyHome)) {
+    return legacyHome;
+  }
+
+  return newHome;
 }
 
 function getConfigPath(env = process.env) {
+  if (env.AI_MODEL_ROUTER_CONFIG) {
+    return path.resolve(env.AI_MODEL_ROUTER_CONFIG);
+  }
+
+  if (env.ATHENA_ROUTER_CONFIG) {
+    return path.resolve(env.ATHENA_ROUTER_CONFIG);
+  }
+
   return path.join(getRouterHome(env), 'config.json');
 }
 
@@ -51,4 +83,3 @@ module.exports = {
   getProjectsDir,
   getRouterHome,
 };
-

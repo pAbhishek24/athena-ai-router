@@ -406,25 +406,46 @@ function createDaemonClient({ cwd, env = process.env, config, baseUrl } = {}) {
       acc[provider.id] = {
         limitTokens: provider.limitTokens,
         usedTokens: provider.usedTokens,
+        projectUsedTokens: provider.projectUsedTokens || provider.usedTokens || 0,
+        effectiveUsedTokens: provider.effectiveUsedTokens || provider.accountUsedTokens || provider.usedTokens || 0,
+        accountUsedTokens: provider.accountUsedTokens || provider.effectiveUsedTokens || provider.usedTokens || 0,
         health: provider.health,
         authState: provider.authState,
         accountLabel: provider.accountLabel,
         statusMessage: provider.statusMessage,
         statusUsage: provider.statusUsage,
+        observedUsage: provider.observedUsage,
+        projectUsage: provider.projectUsage,
+        accountUsage: provider.accountUsage,
         lastSessionRef: provider.lastSessionRef,
         lastStatusAt: provider.lastStatusAt,
+        lastUsageAt: provider.lastUsageAt,
+        observedLastUsageAt: provider.observedLastUsageAt,
       };
       return acc;
     }, {});
+  }
+
+  function getUsageTotal(usage) {
+    return usage && Number.isFinite(usage.totalTokens) ? usage.totalTokens : 0;
   }
 
   function buildCachedSnapshot() {
     const providerViews = effectiveConfig.providers.map((provider) => {
       const stats = state.providerState[provider.id] || {};
       const limit = Number.isFinite(stats.limitTokens) && stats.limitTokens > 0 ? stats.limitTokens : provider.budgetTokens || 0;
-      const used = Number.isFinite(stats.usedTokens) ? stats.usedTokens : 0;
-      const remaining = Math.max(0, limit - used);
-      const ratio = limit > 0 ? used / limit : 0;
+      const projectUsed = Number.isFinite(stats.usedTokens) ? stats.usedTokens : Number.isFinite(stats.projectUsedTokens) ? stats.projectUsedTokens : 0;
+      const observedUsage = stats.observedUsage || stats.accountUsage || stats.statusUsage || null;
+      const effectiveUsed = Number.isFinite(stats.effectiveUsedTokens) && stats.effectiveUsedTokens > 0
+        ? stats.effectiveUsedTokens
+        : Number.isFinite(stats.accountUsedTokens) && stats.accountUsedTokens > 0
+          ? stats.accountUsedTokens
+          : getUsageTotal(observedUsage) || projectUsed;
+      const remaining = Math.max(0, limit - effectiveUsed);
+      const projectRemaining = Math.max(0, limit - projectUsed);
+      const ratio = limit > 0 ? effectiveUsed / limit : 0;
+      const projectRatio = limit > 0 ? projectUsed / limit : 0;
+      const stateLabel = provider.enabled === false ? 'disabled' : state.activeProviderId === provider.id ? 'active' : 'inactive';
       return {
         id: provider.id,
         label: provider.label,
@@ -433,27 +454,40 @@ function createDaemonClient({ cwd, env = process.env, config, baseUrl } = {}) {
         transport: provider.transport || 'command',
         model: provider.model || '',
         enabled: provider.enabled !== false,
+        stateLabel,
         health: stats.health || 'unknown',
         authState: stats.authState || 'unknown',
         accountLabel: stats.accountLabel || null,
         statusMessage: stats.statusMessage || null,
-        statusUsage: stats.statusUsage || null,
-        usedTokens: used,
+        statusUsage: stats.statusUsage || stats.accountUsage || null,
+        observedUsage: stats.observedUsage || stats.accountUsage || stats.statusUsage || null,
+        projectUsage: stats.projectUsage || null,
+        accountUsage: stats.accountUsage || stats.observedUsage || stats.statusUsage || null,
+        usedTokens: projectUsed,
+        projectUsedTokens: projectUsed,
+        effectiveUsedTokens: effectiveUsed,
+        accountUsedTokens: effectiveUsed,
         limitTokens: limit,
         remainingTokens: remaining,
+        projectRemainingTokens: projectRemaining,
         ratio,
         ratioPercent: Number.isFinite(ratio) ? ratio * 100 : 0,
+        projectRatio,
+        projectRatioPercent: Number.isFinite(projectRatio) ? projectRatio * 100 : 0,
         totalTurns: stats.totalTurns || 0,
         lastError: stats.lastError || null,
         lastSessionRef: stats.lastSessionRef || null,
         lastStatusAt: stats.lastStatusAt || null,
+        lastUsageAt: stats.lastUsageAt || null,
+        observedLastUsageAt: stats.observedLastUsageAt || null,
         isActive: state.activeProviderId === provider.id,
       };
     });
 
     const activeProvider = providerViews.find((provider) => provider.isActive) || providerViews[0] || null;
     const nextProvider = providerViews.find((provider) => provider.enabled !== false && (!activeProvider || provider.id !== activeProvider.id)) || null;
-    const totalUsedTokens = providerViews.reduce((sum, provider) => sum + provider.usedTokens, 0);
+    const totalUsedTokens = providerViews.reduce((sum, provider) => sum + provider.effectiveUsedTokens, 0);
+    const totalProjectUsedTokens = providerViews.reduce((sum, provider) => sum + provider.usedTokens, 0);
     const totalLimitTokens = providerViews.reduce((sum, provider) => sum + provider.limitTokens, 0);
 
     return {
@@ -466,6 +500,7 @@ function createDaemonClient({ cwd, env = process.env, config, baseUrl } = {}) {
             id: nextProvider.id,
             label: nextProvider.label,
             usedTokens: nextProvider.usedTokens,
+            effectiveUsedTokens: nextProvider.effectiveUsedTokens,
             limitTokens: nextProvider.limitTokens,
           }
         : null,
@@ -477,6 +512,7 @@ function createDaemonClient({ cwd, env = process.env, config, baseUrl } = {}) {
       workspace: `cwd: ${resolvedCwd}`,
       dashboard: effectiveConfig.dashboard || {},
       totalUsedTokens,
+      totalProjectUsedTokens,
       totalLimitTokens,
     };
   }

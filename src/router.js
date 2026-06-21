@@ -2,6 +2,7 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 const { executeProvider, getProviderTransport, probeProviderStatus, resolveProviderCommand, classifyFailure: classifyProviderFailure } = require('./providers');
 const { commandExists, runCommand } = require('./runner');
+const { collectProviderSnapshot } = require('./local-state');
 const { appendExchange, recordHandoff, saveState, truncate, updateProviderUsage } = require('./store');
 const { estimateTokens } = require('./usage');
 
@@ -117,9 +118,30 @@ function getProviderUsed(state, providerId) {
   return Number.isFinite(getProviderStats(state, providerId).usedTokens) ? getProviderStats(state, providerId).usedTokens : 0;
 }
 
+function getProviderUsageTotal(usage) {
+  return usage && Number.isFinite(usage.totalTokens) ? usage.totalTokens : 0;
+}
+
+function getProviderAccountUsage(state, providerId) {
+  const stats = getProviderStats(state, providerId);
+  return stats.observedUsage || stats.statusUsage || stats.accountUsage || null;
+}
+
+function getProviderEffectiveUsed(state, providerId) {
+  const stats = getProviderStats(state, providerId);
+  const accountUsage = getProviderAccountUsage(state, providerId);
+  if (accountUsage) {
+    return getProviderUsageTotal(accountUsage);
+  }
+  if (Number.isFinite(stats.effectiveUsedTokens) && stats.effectiveUsedTokens > 0) {
+    return stats.effectiveUsedTokens;
+  }
+  return getProviderUsed(state, providerId);
+}
+
 function providerHeadroomRatio(state, provider) {
   const limit = getProviderLimit(state, provider.id, provider.budgetTokens || 0);
-  const used = getProviderUsed(state, provider.id);
+  const used = getProviderEffectiveUsed(state, provider.id);
   if (!limit) {
     return 1;
   }
@@ -202,6 +224,9 @@ class Router {
   }
 
   async refreshProviderStatus() {
+    let latestObservedUsageAt = null;
+    let latestObservedProviderId = null;
+
     for (const provider of this.config.providers) {
       if (provider.enabled === false) {
         continue;
@@ -230,8 +255,11 @@ class Router {
         if (status.statusMessage !== undefined) {
           stats.statusMessage = status.statusMessage;
         }
-        if (Object.prototype.hasOwnProperty.call(status, 'usage')) {
-          stats.statusUsage = status.usage || null;
+        if (Object.prototype.hasOwnProperty.call(status, 'usage') && status.usage) {
+          stats.statusUsage = status.usage;
+          if (!stats.observedUsage) {
+            stats.observedUsage = status.usage;
+          }
         }
         if (Object.prototype.hasOwnProperty.call(status, 'raw')) {
           stats.statusRaw = status.raw || null;
@@ -253,6 +281,65 @@ class Router {
           stats.health = 'ready';
         }
       }
+
+      const localSnapshot = collectProviderSnapshot(provider, this.cwd, this.env);
+      if (localSnapshot) {
+        if (Number.isFinite(localSnapshot.usedTokens)) {
+          stats.usedTokens = localSnapshot.usedTokens;
+        }
+        if (Number.isFinite(localSnapshot.projectUsedTokens)) {
+          stats.projectUsedTokens = localSnapshot.projectUsedTokens;
+        }
+        if (Number.isFinite(localSnapshot.accountUsedTokens)) {
+          stats.accountUsedTokens = localSnapshot.accountUsedTokens;
+        }
+        if (Number.isFinite(localSnapshot.effectiveUsedTokens)) {
+          stats.effectiveUsedTokens = localSnapshot.effectiveUsedTokens;
+        }
+        if (localSnapshot.projectUsage) {
+          stats.projectUsage = localSnapshot.projectUsage;
+        }
+        if (localSnapshot.accountUsage) {
+          stats.accountUsage = localSnapshot.accountUsage;
+        }
+        if (localSnapshot.statusUsage) {
+          stats.statusUsage = localSnapshot.statusUsage;
+        }
+        if (localSnapshot.observedUsage || localSnapshot.accountUsage || localSnapshot.statusUsage) {
+          stats.observedUsage = localSnapshot.observedUsage || localSnapshot.accountUsage || localSnapshot.statusUsage;
+        }
+        if (localSnapshot.observedLastUsageAt) {
+          stats.observedLastUsageAt = localSnapshot.observedLastUsageAt;
+        }
+        if (localSnapshot.lastUsageAt) {
+          stats.lastUsageAt = localSnapshot.lastUsageAt;
+        }
+        if (localSnapshot.authState && (!stats.authState || stats.authState === 'unknown' || stats.statusMessage === 'Status probe not configured')) {
+          stats.authState = localSnapshot.authState;
+        }
+        if (localSnapshot.health && (stats.health === 'unknown' || stats.statusMessage === 'Status probe not configured' || localSnapshot.health !== 'ready')) {
+          stats.health = localSnapshot.health;
+        }
+        if (localSnapshot.accountLabel && (!stats.accountLabel || stats.accountLabel === provider.label || stats.accountLabel === provider.id)) {
+          stats.accountLabel = localSnapshot.accountLabel;
+        }
+        if (localSnapshot.statusMessage && (!stats.statusMessage || stats.statusMessage === 'Status probe not configured')) {
+          stats.statusMessage = localSnapshot.statusMessage;
+        }
+        if (localSnapshot.raw) {
+          stats.observedRaw = localSnapshot.raw;
+        }
+        const observedAt = localSnapshot.observedLastUsageAt || localSnapshot.lastUsageAt;
+        const observedAtMs = observedAt ? Date.parse(observedAt) : 0;
+        if (Number.isFinite(observedAtMs) && observedAtMs > 0 && (!latestObservedUsageAt || observedAtMs > Date.parse(latestObservedUsageAt))) {
+          latestObservedUsageAt = observedAt;
+          latestObservedProviderId = provider.id;
+        }
+      }
+    }
+
+    if (latestObservedProviderId) {
+      this.state.activeProviderId = latestObservedProviderId;
     }
   }
 
@@ -312,7 +399,7 @@ class Router {
       }
 
       const limit = getProviderLimit(this.state, provider.id, provider.budgetTokens || 0);
-      const used = getProviderUsed(this.state, provider.id);
+      const used = getProviderEffectiveUsed(this.state, provider.id);
       const projectedTokens = used + estimatedRequestTokens + DEFAULT_RESERVED_OUTPUT_TOKENS;
       const projectedRatio = limit > 0 ? projectedTokens / limit : 0;
       const isActive = active && provider.id === active.id;
@@ -335,7 +422,7 @@ class Router {
     const fallback = pickFallbackProvider(this.config, this.state, active ? active.id : null);
     if (fallback) {
       const limit = getProviderLimit(this.state, fallback.id, fallback.budgetTokens || 0);
-      const used = getProviderUsed(this.state, fallback.id);
+      const used = getProviderEffectiveUsed(this.state, fallback.id);
       return {
         provider: fallback,
         reason: 'fallback',
@@ -375,11 +462,15 @@ class Router {
     const activeProvider = chooseActiveProvider(this.config, this.state);
     const providerViews = this.config.providers.map((provider) => {
       const limit = getProviderLimit(this.state, provider.id, provider.budgetTokens || 0);
-      const used = getProviderUsed(this.state, provider.id);
-      const remaining = Math.max(0, limit - used);
-      const ratio = limit > 0 ? used / limit : 0;
+      const projectUsed = getProviderUsed(this.state, provider.id);
+      const effectiveUsed = getProviderEffectiveUsed(this.state, provider.id);
+      const remaining = Math.max(0, limit - effectiveUsed);
+      const projectRemaining = Math.max(0, limit - projectUsed);
+      const ratio = limit > 0 ? effectiveUsed / limit : 0;
+      const projectRatio = limit > 0 ? projectUsed / limit : 0;
       const stats = getProviderStats(this.state, provider.id);
       const transport = getProviderTransport(provider);
+      const stateLabel = provider.enabled === false ? 'disabled' : activeProvider ? (activeProvider.id === provider.id ? 'active' : 'inactive') : 'inactive';
       const target = transport === 'http'
         ? (() => {
             const http = provider.http || {};
@@ -403,27 +494,40 @@ class Router {
         transport,
         model: provider.model || '',
         enabled: provider.enabled !== false,
+        stateLabel,
         health: provider.enabled === false ? 'disabled' : stats.health || 'unknown',
         authState: stats.authState || 'unknown',
         accountLabel: stats.accountLabel || null,
         statusMessage: stats.statusMessage || null,
-        statusUsage: stats.statusUsage || null,
-        usedTokens: used,
+        statusUsage: stats.statusUsage || stats.accountUsage || null,
+        observedUsage: stats.observedUsage || stats.accountUsage || stats.statusUsage || null,
+        projectUsage: stats.projectUsage || null,
+        accountUsage: stats.accountUsage || stats.observedUsage || stats.statusUsage || null,
+        usedTokens: projectUsed,
+        projectUsedTokens: projectUsed,
+        effectiveUsedTokens: effectiveUsed,
+        accountUsedTokens: effectiveUsed,
         limitTokens: limit,
         remainingTokens: remaining,
+        projectRemainingTokens: projectRemaining,
         ratio,
         ratioPercent: Number.isFinite(ratio) ? ratio * 100 : 0,
+        projectRatio,
+        projectRatioPercent: Number.isFinite(projectRatio) ? projectRatio * 100 : 0,
         totalTurns: stats.totalTurns || 0,
         lastError: stats.lastError || null,
         lastSessionRef: stats.lastSessionRef || null,
         lastStatusAt: stats.lastStatusAt || null,
+        lastUsageAt: stats.lastUsageAt || null,
+        observedLastUsageAt: stats.observedLastUsageAt || null,
         isActive: activeProvider ? activeProvider.id === provider.id : false,
       };
     });
 
     const activeView = providerViews.find((provider) => provider.isActive) || providerViews[0] || null;
     const nextProvider = pickFallbackProvider(this.config, this.state, activeProvider ? activeProvider.id : null);
-    const totalUsedTokens = providerViews.reduce((sum, provider) => sum + provider.usedTokens, 0);
+    const totalUsedTokens = providerViews.reduce((sum, provider) => sum + provider.effectiveUsedTokens, 0);
+    const totalProjectUsedTokens = providerViews.reduce((sum, provider) => sum + provider.usedTokens, 0);
     const totalLimitTokens = providerViews.reduce((sum, provider) => sum + provider.limitTokens, 0);
 
     return {
@@ -436,6 +540,7 @@ class Router {
             id: nextProvider.id,
             label: nextProvider.label,
             usedTokens: getProviderUsed(this.state, nextProvider.id),
+            effectiveUsedTokens: getProviderEffectiveUsed(this.state, nextProvider.id),
             limitTokens: getProviderLimit(this.state, nextProvider.id, nextProvider.budgetTokens || 0),
           }
         : null,
@@ -447,6 +552,7 @@ class Router {
       workspace: collectWorkspaceContext(this.cwd),
       dashboard: this.config.dashboard || {},
       totalUsedTokens,
+      totalProjectUsedTokens,
       totalLimitTokens,
     };
   }
@@ -461,7 +567,7 @@ class Router {
     const threshold = this.config.switchThreshold || 0.99;
     const estimatedRequestTokens = this.estimateRequestTokens(prompt);
     const activeLimit = activeProvider ? getProviderLimit(this.state, activeProvider.id, activeProvider.budgetTokens || 0) : 0;
-    const activeUsed = activeProvider ? getProviderUsed(this.state, activeProvider.id) : 0;
+    const activeUsed = activeProvider ? getProviderEffectiveUsed(this.state, activeProvider.id) : 0;
     const activeAvailable = activeProvider ? isProviderAvailable(this.state, activeProvider) : false;
     const activeHealth = activeProvider ? getProviderHealth(this.state, activeProvider.id) : 'unknown';
     const activeErrorMessage = activeProvider ? getProviderStats(this.state, activeProvider.id).lastError || activeHealth : activeHealth;
@@ -503,9 +609,9 @@ class Router {
               fromProvider: pendingHandoffFrom,
               toProvider: provider,
               reason: pendingHandoffReason === 'active' ? 'manual' : pendingHandoffReason,
-              usedTokens: getProviderUsed(this.state, pendingHandoffFrom.id),
+              usedTokens: getProviderEffectiveUsed(this.state, pendingHandoffFrom.id),
               limitTokens: getProviderLimit(this.state, pendingHandoffFrom.id, pendingHandoffFrom.budgetTokens || 0),
-              projectedTokens: getProviderUsed(this.state, provider.id) + estimatedRequestTokens + DEFAULT_RESERVED_OUTPUT_TOKENS,
+              projectedTokens: getProviderEffectiveUsed(this.state, provider.id) + estimatedRequestTokens + DEFAULT_RESERVED_OUTPUT_TOKENS,
               errorMessage: pendingHandoffErrorMessage,
             })
           : '';
@@ -564,8 +670,10 @@ class Router {
         usage: execution.usage,
       });
 
+      await this.refreshProviderStatus();
+
       const providerLimit = getProviderLimit(this.state, provider.id, provider.budgetTokens || 0);
-      const providerUsed = getProviderUsed(this.state, provider.id);
+      const providerUsed = getProviderEffectiveUsed(this.state, provider.id);
       const providerRatio = providerLimit > 0 ? providerUsed / providerLimit : 0;
 
       if (pendingHandoffFrom && pendingHandoffFrom.id !== provider.id) {

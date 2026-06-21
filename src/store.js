@@ -7,6 +7,9 @@ function createProviderStats(provider, limitOverride) {
   return {
     limitTokens: budget,
     usedTokens: 0,
+    projectUsedTokens: 0,
+    effectiveUsedTokens: 0,
+    accountUsedTokens: 0,
     promptTokens: 0,
     completionTokens: 0,
     reasoningTokens: 0,
@@ -19,6 +22,9 @@ function createProviderStats(provider, limitOverride) {
     accountLabel: null,
     statusMessage: null,
     statusUsage: null,
+    observedUsage: null,
+    projectUsage: null,
+    accountUsage: null,
     statusRaw: null,
     lastError: null,
     lastSessionRef: null,
@@ -160,6 +166,13 @@ function updateProviderUsage(state, providerId, usage, sessionRef, errorMessage)
   }
 
   provider.usedTokens += Number.isFinite(usage.totalTokens) ? usage.totalTokens : 0;
+  provider.projectUsedTokens = provider.usedTokens;
+  if (!Number.isFinite(provider.effectiveUsedTokens) || provider.effectiveUsedTokens < provider.usedTokens) {
+    provider.effectiveUsedTokens = provider.usedTokens;
+  }
+  if (!Number.isFinite(provider.accountUsedTokens) || provider.accountUsedTokens < provider.effectiveUsedTokens) {
+    provider.accountUsedTokens = provider.effectiveUsedTokens;
+  }
   provider.promptTokens += Number.isFinite(usage.promptTokens) ? usage.promptTokens : 0;
   provider.completionTokens += Number.isFinite(usage.completionTokens) ? usage.completionTokens : 0;
   provider.reasoningTokens += Number.isFinite(usage.reasoningTokens) ? usage.reasoningTokens : 0;

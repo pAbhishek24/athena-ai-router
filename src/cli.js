@@ -7,7 +7,7 @@ const { URL } = require('url');
 const { loadConfig, saveConfig } = require('./config');
 const { runWorkspaceTask } = require('./agent');
 const { ensureRouterStructure, getConfigPath } = require('./paths');
-const { createDaemonClient, createDaemonServer, ensureDaemonRunning, readDaemonMetadata, stopDaemon } = require('./daemon');
+const { createDaemonClient, createDaemonServer, ensureDaemonRunning, isDaemonHealthy, readDaemonMetadata, stopDaemon } = require('./daemon');
 const { launchNativeStatusApp } = require('./native-app');
 const { installShims, removeShims, runShimExec, summarizeShims } = require('./shims');
 const { renderStatusText } = require('./dashboard');
@@ -313,8 +313,15 @@ async function runAsk(router, parsed, commandArgs) {
 
   stdout.write(`${result.text}\n`);
   const usage = result.usage || {};
+  const stats = router.state.providerState[result.providerId] || {};
+  const projectTotal = Number.isFinite(stats.usedTokens) ? stats.usedTokens : 0;
+  const accountTotal = Number.isFinite(stats.effectiveUsedTokens)
+    ? stats.effectiveUsedTokens
+    : Number.isFinite(stats.accountUsedTokens)
+      ? stats.accountUsedTokens
+      : projectTotal;
   stdout.write(
-    `[${result.providerId}] used ${usage.totalTokens || 0} tokens this turn, total ledger: ${router.state.providerState[result.providerId].usedTokens || 0}\n`
+    `[${result.providerId}] used ${usage.totalTokens || 0} tokens this turn, project ledger: ${projectTotal}, account total: ${accountTotal}\n`
   );
 }
 
@@ -523,6 +530,7 @@ async function runDaemonCommand(parsed, commandArgs) {
       stdout.write('Daemon is not running\n');
       return;
     }
+    const healthy = metadata.url ? await isDaemonHealthy(metadata.url) : false;
     const info = {
       pid: metadata.pid,
       url: metadata.url,
@@ -531,8 +539,13 @@ async function runDaemonCommand(parsed, commandArgs) {
       startedAt: metadata.startedAt,
       configPath: metadata.configPath,
       pollMs: metadata.pollMs,
+      health: healthy ? 'running' : 'stale',
+      reachable: healthy,
     };
     stdout.write(`${JSON.stringify(info, null, 2)}\n`);
+    if (!healthy) {
+      stdout.write(`Warning: daemon metadata exists but ${metadata.url} is not reachable.\n`);
+    }
     return;
   }
 

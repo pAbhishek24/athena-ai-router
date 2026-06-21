@@ -77,7 +77,9 @@ Example shape:
 - Gemini is supported as a configurable adapter with command fallbacks such as `gemini` and `gemni`.
 - Local hosted models are supported through the HTTP transport adapter, so you can mix remote CLI tools and local servers in the same terminal session.
 - Token numbers are normalized from provider output when available and fall back to a conservative estimate when a provider does not report them.
+- The dashboard separates router-ledger usage from observed provider/account usage so direct CLI activity from a sibling terminal stays visible without corrupting the per-project routing budget.
 - `model-router status` and `model-router task` refresh daemon state before each turn, so usage changes made from other terminals or from installed shims show up in the current session.
+- Codex usage is reconciled from Codex's local SQLite state in `~/.codex`. The router ledger uses the current repo cwd only, while the dashboard also shows the account-wide Codex total as observed usage.
 - `model-router task` is the closest mode to a CLI IDE. It asks the model for a JSON action plan and executes workspace tools locally, so file edits and shell commands happen from the router instead of only being described in text.
 - `model-router app` or `model-router panel` opens the native menubar app. It uses an embedded WebKit view, has a manual Refresh button, and will try to reconnect the daemon on launch.
 - `model-router serve` is the browser/debug endpoint if you want to inspect the dashboard URL directly.

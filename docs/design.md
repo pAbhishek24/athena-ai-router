@@ -16,6 +16,8 @@ The primary visualization is the native menubar app backed by an embedded WebKit
 
 The router now keeps the active project state in a daemon-backed control plane so usage and auth snapshots continue updating after the terminal that started the session exits.
 
+For Codex specifically, the router reconciles usage from Codex's local SQLite state in `~/.codex`. The router ledger is scoped to the current repo cwd, and the dashboard shows the account-wide Codex total separately as observed usage.
+
 Providers can optionally expose an explicit `status` probe so the router can cache:
 
 - authentication state
@@ -112,7 +114,7 @@ Usage reporting is normalized into a conservative local total:
 - Gemini: a provider report is used when available, otherwise the router estimates from text length
 - Local HTTP models: the router reads provider usage if the server reports it, otherwise it estimates from the final text
 
-The dashboard shows the normalized local total so switching works consistently across providers.
+The dashboard shows the router ledger as the switching budget and also surfaces observed provider/account usage separately. That keeps the per-project routing budget stable while still showing direct CLI activity from a sibling terminal or a provider status probe.
 
 ## Commands
 

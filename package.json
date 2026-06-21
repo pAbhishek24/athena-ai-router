@@ -1,6 +1,6 @@
 {
   "name": "ai-model-router",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Terminal router for Claude, Codex, Gemini, and local HTTP-hosted LLMs with token tracking and automatic model handoff",
   "type": "commonjs",
   "main": "src/cli.js",

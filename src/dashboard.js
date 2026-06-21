@@ -41,6 +41,50 @@ function formatUsageSnapshot(usage) {
   return pieces.length ? pieces.join(', ') : 'n/a';
 }
 
+function formatObservedUsageSnapshot(usage) {
+  if (!usage || typeof usage !== 'object') {
+    return 'n/a';
+  }
+
+  const summary = formatUsageSnapshot(usage);
+  const parts = [summary];
+  if (usage.source) {
+    parts.push(String(usage.source));
+  }
+  if (usage.scope) {
+    parts.push(String(usage.scope));
+  }
+  return parts.join(' · ');
+}
+
+function formatSessionRef(sessionRef) {
+  if (!sessionRef || typeof sessionRef !== 'object') {
+    return 'none';
+  }
+
+  if (typeof sessionRef.sessionId === 'string' && sessionRef.sessionId.trim()) {
+    return `session ${sessionRef.sessionId.trim().slice(0, 12)}`;
+  }
+  if (typeof sessionRef.threadId === 'string' && sessionRef.threadId.trim()) {
+    return `thread ${sessionRef.threadId.trim().slice(0, 12)}`;
+  }
+
+  return JSON.stringify(sessionRef);
+}
+
+function formatTimestamp(value) {
+  if (!value) {
+    return 'n/a';
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
+  }
+
+  return date.toLocaleString();
+}
+
 function renderProgressBar(ratio, width = 22) {
   const clamped = Math.max(0, Math.min(1, ratio || 0));
   const filled = Math.round(clamped * width);
@@ -55,19 +99,72 @@ function renderStatusText(snapshot) {
   lines.push(`Active provider: ${snapshot.activeProvider ? snapshot.activeProvider.label : 'none'}`);
   lines.push(`Dashboard: http://${snapshot.dashboard.host || '127.0.0.1'}:${snapshot.dashboard.port || 3077}`);
   lines.push('');
-  lines.push('Provider'.padEnd(12) + 'Usage'.padEnd(20) + 'Remaining'.padEnd(14) + 'Auth'.padEnd(12) + 'Health'.padEnd(12) + 'Gauge');
-  lines.push('-'.repeat(90));
+  lines.push('Global summary');
+  lines.push('-'.repeat(72));
+  lines.push(`Account total: ${formatNumber(snapshot.totalUsedTokens)} / ${formatNumber(snapshot.totalLimitTokens)}`);
+  lines.push(`Project ledger: ${formatNumber(snapshot.totalProjectUsedTokens)} / ${formatNumber(snapshot.totalLimitTokens)}`);
+  lines.push(`Active provider: ${snapshot.activeProvider ? snapshot.activeProvider.label : 'none'}`);
+  lines.push(`Next fallback: ${snapshot.nextProvider ? snapshot.nextProvider.label : 'none'}`);
+  lines.push('');
+  lines.push('Provider accounts');
+  lines.push('-'.repeat(72));
 
   for (const provider of snapshot.providerViews) {
-    const usage = `${formatNumber(provider.usedTokens)} / ${formatNumber(provider.limitTokens)}`;
+    const state = provider.stateLabel || (provider.isActive ? 'active' : provider.enabled === false ? 'disabled' : 'inactive');
+    const accountUsed = Number.isFinite(provider.effectiveUsedTokens) ? provider.effectiveUsedTokens : provider.usedTokens;
+    const projectUsed = Number.isFinite(provider.projectUsedTokens) ? provider.projectUsedTokens : provider.usedTokens;
+    const accountUsage = `${formatNumber(accountUsed)} / ${formatNumber(provider.limitTokens)}`;
+    const projectUsage = `${formatNumber(projectUsed)} / ${formatNumber(provider.limitTokens)}`;
     const remaining = formatNumber(provider.remainingTokens);
+    const observed = formatObservedUsageSnapshot(provider.observedUsage || provider.statusUsage || provider.accountUsage);
     const auth = String(provider.authState || 'unknown');
     const health = provider.health || 'unknown';
-    const gauge = renderProgressBar(provider.ratio, 22);
     const prefix = provider.isActive ? '>' : ' ';
-    lines.push(
-      `${prefix} ${provider.label.padEnd(11)}${usage.padEnd(20)}${remaining.padEnd(14)}${auth.padEnd(12)}${health.padEnd(12)}${gauge} ${formatPercent(provider.ratio)}`
-    );
+    lines.push(`${prefix} ${provider.label} [${state}] account ${accountUsage} ledger ${projectUsage} remaining ${remaining} auth ${auth} health ${health} usage ${formatPercent(provider.ratio)} ledger ${formatPercent(provider.projectRatio || 0)}`);
+    lines.push(`  observed: ${observed}`);
+    if (provider.accountLabel) {
+      lines.push(`  account: ${provider.accountLabel}`);
+    }
+    lines.push(`  router ledger: ${projectUsage} remaining ${formatNumber(provider.projectRemainingTokens)}`);
+    if (provider.statusMessage) {
+      lines.push(`  note: ${provider.statusMessage}`);
+    }
+    if (provider.lastUsageAt) {
+      lines.push(`  project sync: ${formatTimestamp(provider.lastUsageAt)}`);
+    } else {
+      lines.push('  project sync: n/a');
+    }
+    if (provider.observedLastUsageAt) {
+      lines.push(`  observed sync: ${formatTimestamp(provider.observedLastUsageAt)}`);
+    }
+    if (provider.lastSessionRef) {
+      lines.push(`  session: ${formatSessionRef(provider.lastSessionRef)}`);
+    }
+  }
+
+  lines.push('');
+  lines.push('Project ledgers');
+  lines.push('-'.repeat(72));
+  for (const provider of snapshot.providerViews) {
+    const state = provider.stateLabel || (provider.isActive ? 'active' : provider.enabled === false ? 'disabled' : 'inactive');
+    const projectUsed = Number.isFinite(provider.projectUsedTokens) ? provider.projectUsedTokens : provider.usedTokens;
+    const projectUsage = `${formatNumber(projectUsed)} / ${formatNumber(provider.limitTokens)}`;
+    const prefix = provider.isActive ? '>' : ' ';
+    lines.push(`${prefix} ${provider.label} [${state}] ledger ${projectUsage} remaining ${formatNumber(provider.projectRemainingTokens)} ratio ${formatPercent(provider.projectRatio || 0)}`);
+    if (provider.accountLabel) {
+      lines.push(`  account: ${provider.accountLabel}`);
+    }
+    if (provider.lastUsageAt) {
+      lines.push(`  project sync: ${formatTimestamp(provider.lastUsageAt)}`);
+    } else {
+      lines.push('  project sync: n/a');
+    }
+    if (provider.observedLastUsageAt) {
+      lines.push(`  observed sync: ${formatTimestamp(provider.observedLastUsageAt)}`);
+    }
+    if (provider.lastSessionRef) {
+      lines.push(`  session: ${formatSessionRef(provider.lastSessionRef)}`);
+    }
   }
 
   lines.push('');
@@ -132,7 +229,7 @@ function buildDashboardHtml(snapshot) {
     }
     .shell {
       position: relative;
-      max-width: 1440px;
+      max-width: 1680px;
       margin: 0 auto;
       padding: 28px;
     }
@@ -206,10 +303,93 @@ function buildDashboardHtml(snapshot) {
     .pill strong {
       color: var(--text);
     }
+    .summary-strip {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 12px;
+      margin-bottom: 24px;
+      padding: 18px;
+      border: 1px solid var(--panel-border);
+      border-radius: calc(var(--radius) + 4px);
+      background: linear-gradient(180deg, rgba(15, 23, 42, 0.88), rgba(15, 23, 42, 0.7));
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(16px);
+    }
+    .summary-card {
+      display: grid;
+      gap: 6px;
+      min-height: 104px;
+      padding: 14px 16px;
+      border-radius: 18px;
+      background: rgba(2, 6, 23, 0.42);
+      border: 1px solid rgba(148, 163, 184, 0.14);
+      align-content: start;
+    }
+    .summary-card span {
+      color: var(--muted);
+      text-transform: uppercase;
+      font-size: 0.72rem;
+      letter-spacing: 0.18em;
+    }
+    .summary-card strong {
+      font-size: 1.35rem;
+      line-height: 1.1;
+    }
+    .summary-card small {
+      color: var(--muted);
+      line-height: 1.35;
+    }
+    .summary-card.compact strong {
+      font-size: 1.12rem;
+      line-height: 1.25;
+      word-break: break-word;
+    }
+    .summary-actions {
+      display: flex;
+      align-items: stretch;
+      justify-content: stretch;
+      min-height: 104px;
+    }
+    .summary-actions button {
+      width: 100%;
+      height: 100%;
+      border-radius: 18px;
+    }
+    .section {
+      display: grid;
+      gap: 14px;
+      margin-bottom: 24px;
+    }
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: flex-end;
+      flex-wrap: wrap;
+    }
+    .section-title {
+      margin: 0;
+      font-size: 1rem;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .section-note {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.92rem;
+      line-height: 1.45;
+      max-width: 820px;
+    }
     .cards {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-      gap: 18px;
+      gap: 20px;
+    }
+    .account-cards {
+      grid-template-columns: repeat(auto-fit, minmax(520px, 1fr));
+    }
+    .ledger-cards {
+      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
     }
     .card {
       position: relative;
@@ -257,16 +437,29 @@ function buildDashboardHtml(snapshot) {
       border-color: rgba(34, 197, 94, 0.28);
       background: rgba(34, 197, 94, 0.12);
     }
+    .badge.inactive {
+      color: #cbd5e1;
+      border-color: rgba(148, 163, 184, 0.22);
+      background: rgba(148, 163, 184, 0.1);
+    }
+    .badge.disabled {
+      color: #fecaca;
+      border-color: rgba(248, 113, 113, 0.22);
+      background: rgba(248, 113, 113, 0.1);
+    }
     .card-grid {
       display: grid;
-      grid-template-columns: 160px 1fr;
-      gap: 18px;
-      align-items: center;
+      grid-template-columns: 194px minmax(0, 1fr);
+      gap: 20px;
+      align-items: start;
+    }
+    .card-grid.ledger-grid {
+      grid-template-columns: 154px minmax(0, 1fr);
     }
     .pie {
       --filled: 0deg;
       --accent: #22c55e;
-      width: 160px;
+      width: 194px;
       aspect-ratio: 1;
       border-radius: 50%;
       background: conic-gradient(var(--accent) 0 var(--filled), rgba(148, 163, 184, 0.13) var(--filled) 360deg);
@@ -276,47 +469,74 @@ function buildDashboardHtml(snapshot) {
       margin-inline: auto;
       transition: transform 220ms ease;
     }
+    .pie.small {
+      width: 154px;
+    }
     .pie::after {
       content: "";
       position: absolute;
-      inset: 18px;
+      inset: 24px;
       border-radius: 50%;
       background: rgba(15, 23, 42, 0.95);
       border: 1px solid rgba(255, 255, 255, 0.06);
       box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+    }
+    .pie.small::after {
+      inset: 18px;
     }
     .pie-label {
       position: relative;
       z-index: 1;
       display: grid;
       place-items: center;
-      gap: 4px;
+      gap: 3px;
       text-align: center;
     }
     .pie-label .percent {
-      font-size: 1.6rem;
+      font-size: 1.22rem;
       font-weight: 700;
       line-height: 1;
     }
     .pie-label .fraction {
       color: var(--muted);
       font-size: 0.72rem;
-      line-height: 1.2;
+      line-height: 1.35;
+      max-width: 176px;
+      word-break: break-word;
     }
     .stats {
       display: grid;
+      grid-template-columns: 1fr;
       gap: 10px;
+      align-content: start;
     }
     .stat {
       display: flex;
-      justify-content: space-between;
-      gap: 16px;
+      flex-direction: column;
+      gap: 4px;
       color: var(--muted);
       font-size: 0.9rem;
+      min-width: 0;
+      padding: 10px 12px;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(148, 163, 184, 0.1);
+    }
+    .stat span {
+      color: var(--muted);
+      font-size: 0.72rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
     }
     .stat strong {
       color: var(--text);
       font-weight: 600;
+      line-height: 1.35;
+      word-break: break-word;
+    }
+    .stat.note strong {
+      color: #cbd5e1;
+      font-weight: 500;
     }
     .card-actions {
       display: flex;
@@ -390,7 +610,11 @@ function buildDashboardHtml(snapshot) {
     @media (max-width: 720px) {
       .shell { padding: 16px; }
       .card-grid { grid-template-columns: 1fr; }
-      .pie { width: 140px; }
+      .account-cards,
+      .ledger-cards,
+      .summary-strip { grid-template-columns: 1fr; }
+      .pie { width: 160px; }
+      .pie.small { width: 160px; }
     }
   </style>
 </head>
@@ -399,7 +623,7 @@ function buildDashboardHtml(snapshot) {
     <section class="hero">
       <div>
         <h1 class="title">${APP_NAME}</h1>
-        <p class="subtitle">One terminal controller for Claude, Codex, Gemini, and local HTTP-hosted models. The dashboard shows per-model limits, current usage, and the automatic handoff path when a model gets too close to its budget.</p>
+        <p class="subtitle">One terminal controller for Claude, Codex, Gemini, and local HTTP-hosted models. Each card now shows the router ledger and the account-wide usage separately so external usage from other terminals stays visible without flattening the project view.</p>
       </div>
       <div class="hero-meta">
         <div>
@@ -413,16 +637,61 @@ function buildDashboardHtml(snapshot) {
       </div>
     </section>
 
-    <div class="toolbar">
-      <span class="pill"><strong id="total-used">0</strong> used</span>
-      <span class="pill"><strong id="total-limit">0</strong> budgeted</span>
-      <span class="pill">Project: <strong id="project-root">-</strong></span>
-      <span class="pill">Refresh: <strong>manual</strong></span>
-      <span class="spacer"></span>
-      <button id="refresh-button" class="primary" type="button">Refresh</button>
-    </div>
+    <section class="summary-strip">
+      <div class="summary-card">
+        <span>Global account total</span>
+        <strong id="total-used">0</strong>
+        <small>Across Claude, Codex, Gemini, and local models</small>
+      </div>
+      <div class="summary-card">
+        <span>Project ledger</span>
+        <strong id="project-used">0</strong>
+        <small>Current workspace only</small>
+      </div>
+      <div class="summary-card">
+        <span>Budgeted</span>
+        <strong id="total-limit">0</strong>
+        <small>Configured provider budgets</small>
+      </div>
+      <div class="summary-card">
+        <span>Active provider</span>
+        <strong id="summary-active-provider">-</strong>
+        <small>Current execution target</small>
+      </div>
+      <div class="summary-card">
+        <span>Next fallback</span>
+        <strong id="summary-next-provider">none</strong>
+        <small>Ready when the active account crosses threshold</small>
+      </div>
+      <div class="summary-card compact">
+        <span>Project</span>
+        <strong id="project-root">-</strong>
+        <small>Manual refresh only</small>
+      </div>
+      <div class="summary-actions">
+        <button id="refresh-button" class="primary" type="button">Refresh</button>
+      </div>
+    </section>
 
-    <section class="cards" id="cards"></section>
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <h2 class="section-title">Provider accounts</h2>
+          <p class="section-note">This view is account-wide. It shows the authenticated account, router-level effective usage, and the provider that will be selected for the next turn.</p>
+        </div>
+      </div>
+      <div class="cards account-cards" id="account-cards"></div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <h2 class="section-title">Project ledgers</h2>
+          <p class="section-note">This view keeps the per-project router ledger separate so the local workspace budget does not get flattened into the account-wide snapshot.</p>
+        </div>
+      </div>
+      <div class="cards ledger-cards" id="ledger-cards"></div>
+    </section>
 
     <section class="feed">
       <div class="feed-card">
@@ -446,17 +715,24 @@ function buildDashboardHtml(snapshot) {
       return new Intl.NumberFormat('en-US').format(Number.isFinite(value) ? value : 0);
     }
 
+    function formatCompactNumber(value) {
+      return new Intl.NumberFormat('en-US', {
+        notation: 'compact',
+        maximumFractionDigits: 1,
+      }).format(Number.isFinite(value) ? value : 0);
+    }
+
     function formatPercent(ratio) {
       return ((ratio || 0) * 100).toFixed(1) + '%';
     }
 
-    function formatUsageSnapshot(usage) {
+    function formatUsageSnapshot(usage, compact = false) {
       if (!usage || typeof usage !== 'object') {
         return 'n/a';
       }
 
       if (Number.isFinite(usage.totalTokens) && usage.totalTokens > 0) {
-        return formatNumber(usage.totalTokens) + ' tokens';
+        return (compact ? formatCompactNumber(usage.totalTokens) : formatNumber(usage.totalTokens)) + ' tokens';
       }
 
       const pieces = [];
@@ -467,6 +743,50 @@ function buildDashboardHtml(snapshot) {
         pieces.push('completion ' + formatNumber(usage.completionTokens));
       }
       return pieces.length ? pieces.join(', ') : 'n/a';
+    }
+
+    function formatObservedUsageSnapshot(usage, compact = false) {
+      if (!usage || typeof usage !== 'object') {
+        return 'n/a';
+      }
+
+      const summary = formatUsageSnapshot(usage, compact);
+      const parts = [summary];
+      if (usage.source) {
+        parts.push(String(usage.source));
+      }
+      if (usage.scope) {
+        parts.push(String(usage.scope));
+      }
+      return parts.join(' · ');
+    }
+
+    function formatSessionRef(sessionRef) {
+      if (!sessionRef || typeof sessionRef !== 'object') {
+        return 'none';
+      }
+
+      if (typeof sessionRef.sessionId === 'string' && sessionRef.sessionId.trim()) {
+        return 'session ' + sessionRef.sessionId.trim().slice(0, 12);
+      }
+      if (typeof sessionRef.threadId === 'string' && sessionRef.threadId.trim()) {
+        return 'thread ' + sessionRef.threadId.trim().slice(0, 12);
+      }
+
+      return JSON.stringify(sessionRef);
+    }
+
+    function formatTimestamp(value) {
+      if (!value) {
+        return 'n/a';
+      }
+
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) {
+        return String(value);
+      }
+
+      return date.toLocaleString();
     }
 
     function escapeHtml(value) {
@@ -482,16 +802,22 @@ function buildDashboardHtml(snapshot) {
       return ${JSON.stringify(COLORS)}[index % ${COLORS.length}];
     }
 
-    function renderProviderCard(provider, index) {
+    function renderAccountCard(provider, index) {
       const percent = Math.max(0, Math.min(100, provider.ratioPercent || 0));
       const angle = Math.round((percent / 100) * 360);
+      const stateLabel = provider.stateLabel || (provider.isActive ? 'active' : provider.enabled === false ? 'disabled' : 'inactive');
       const activeClass = provider.isActive ? 'active' : '';
-      const badge = provider.isActive
-        ? '<span class="badge active">active</span>'
-        : '<span class="badge">' + escapeHtml(provider.health || 'unknown') + '</span>';
+      const badgeClass = stateLabel === 'active' ? 'active' : stateLabel === 'disabled' ? 'disabled' : 'inactive';
+      const badge = '<span class="badge ' + badgeClass + '">' + escapeHtml(stateLabel) + '</span>';
       const descriptor = provider.transport === 'http'
         ? 'HTTP · ' + escapeHtml(provider.target || provider.command || provider.transport)
         : escapeHtml(provider.target || provider.command || provider.model || '');
+      const observedUsage = provider.observedUsage || provider.statusUsage || provider.accountUsage || null;
+      const accountUsed = Number.isFinite(provider.effectiveUsedTokens) ? provider.effectiveUsedTokens : Number.isFinite(provider.usedTokens) ? provider.usedTokens : 0;
+      const accountRemaining = Number.isFinite(provider.remainingTokens) ? provider.remainingTokens : Math.max(0, (provider.limitTokens || 0) - accountUsed);
+      const accountUsageValue = formatCompactNumber(accountUsed) + ' / ' + formatCompactNumber(provider.limitTokens);
+      const observedValue = formatObservedUsageSnapshot(observedUsage, true);
+      const observedSyncValue = formatTimestamp(provider.observedLastUsageAt);
       const action = provider.isActive
         ? '<button class="primary" disabled>Active</button>'
         : '<button class="primary" data-provider-id="' + escapeHtml(provider.id) + '">Make active</button>';
@@ -507,23 +833,66 @@ function buildDashboardHtml(snapshot) {
           '<div class="card-grid">',
             '<div class="pie" style="--filled:' + angle + 'deg; --accent:' + accentForIndex(index) + '">',
               '<div class="pie-label">',
-                '<div class="percent">' + formatPercent(provider.ratio || 0) + '</div>',
-                '<div class="fraction">' + formatNumber(provider.usedTokens) + ' / ' + formatNumber(provider.limitTokens) + '</div>',
-                provider.statusMessage ? '<div class="fraction" style="max-width: 120px; color: #cbd5e1;">' + escapeHtml(provider.statusMessage) + '</div>' : '',
+                '<div class="percent">account ' + formatPercent(provider.ratio || 0) + '</div>',
+                '<div class="fraction">account ' + escapeHtml(accountUsageValue) + '</div>',
+                '<div class="fraction" style="max-width: 160px; color: #cbd5e1;">' + escapeHtml(provider.accountLabel || 'n/a') + '</div>',
               '</div>',
             '</div>',
             '<div class="stats">',
-              '<div class="stat"><span>Remaining</span><strong>' + formatNumber(provider.remainingTokens) + '</strong></div>',
-              '<div class="stat"><span>Auth</span><strong>' + escapeHtml(provider.authState || 'unknown') + '</strong></div>',
-              '<div class="stat"><span>Account</span><strong>' + escapeHtml(provider.accountLabel || 'n/a') + '</strong></div>',
-              '<div class="stat"><span>Status usage</span><strong>' + escapeHtml(formatUsageSnapshot(provider.statusUsage)) + '</strong></div>',
-              '<div class="stat"><span>Health</span><strong>' + escapeHtml(provider.health || 'unknown') + '</strong></div>',
-              '<div class="stat"><span>Turns</span><strong>' + formatNumber(provider.totalTurns || 0) + '</strong></div>',
-              '<div class="stat"><span>Session</span><strong>' + escapeHtml(provider.lastSessionRef ? JSON.stringify(provider.lastSessionRef) : 'none') + '</strong></div>',
+              '<div class="stat"><span>State</span><strong title="' + escapeHtml(stateLabel) + '">' + escapeHtml(stateLabel) + '</strong></div>',
+              '<div class="stat"><span>Account usage</span><strong title="' + escapeHtml(formatNumber(accountUsed) + ' / ' + formatNumber(provider.limitTokens)) + '">' + escapeHtml(accountUsageValue) + '</strong></div>',
+              '<div class="stat"><span>Account remaining</span><strong title="' + escapeHtml(formatNumber(accountRemaining)) + '">' + formatCompactNumber(accountRemaining) + '</strong></div>',
+              '<div class="stat"><span>Observed usage</span><strong title="' + escapeHtml(formatObservedUsageSnapshot(observedUsage, false)) + '">' + escapeHtml(observedValue) + '</strong></div>',
+              '<div class="stat"><span>Auth / Health</span><strong title="' + escapeHtml((provider.authState || 'unknown') + ' / ' + (provider.health || 'unknown')) + '">' + escapeHtml((provider.authState || 'unknown') + ' / ' + (provider.health || 'unknown')) + '</strong></div>',
+              '<div class="stat"><span>Account</span><strong title="' + escapeHtml(provider.accountLabel || 'n/a') + '">' + escapeHtml(provider.accountLabel || 'n/a') + '</strong></div>',
+              '<div class="stat"><span>Turns</span><strong title="' + formatNumber(provider.totalTurns || 0) + '">' + formatCompactNumber(provider.totalTurns || 0) + '</strong></div>',
+              '<div class="stat"><span>Observed sync</span><strong title="' + escapeHtml(observedSyncValue) + '">' + escapeHtml(observedSyncValue) + '</strong></div>',
+              provider.statusMessage ? '<div class="stat note"><span>Note</span><strong title="' + escapeHtml(provider.statusMessage) + '">' + escapeHtml(provider.statusMessage) + '</strong></div>' : '',
             '</div>',
           '</div>',
           '<div class="card-actions">' + action + '</div>',
           provider.lastError ? '<div style="margin-top:12px; color:#fca5a5; font-size:0.84rem;">Last error: ' + escapeHtml(provider.lastError) + '</div>' : '',
+        '</article>',
+      ].join('');
+    }
+
+    function renderLedgerCard(provider, index) {
+      const percent = Math.max(0, Math.min(100, provider.projectRatioPercent || 0));
+      const angle = Math.round((percent / 100) * 360);
+      const stateLabel = provider.stateLabel || (provider.isActive ? 'active' : provider.enabled === false ? 'disabled' : 'inactive');
+      const badgeClass = stateLabel === 'active' ? 'active' : stateLabel === 'disabled' ? 'disabled' : 'inactive';
+      const projectUsed = Number.isFinite(provider.projectUsedTokens) ? provider.projectUsedTokens : Number.isFinite(provider.usedTokens) ? provider.usedTokens : 0;
+      const projectRemaining = Number.isFinite(provider.projectRemainingTokens) ? provider.projectRemainingTokens : Math.max(0, (provider.limitTokens || 0) - projectUsed);
+      const sessionRef = formatSessionRef(provider.lastSessionRef);
+      const projectUsageValue = formatCompactNumber(projectUsed) + ' / ' + formatCompactNumber(provider.limitTokens);
+      const observedValue = formatObservedUsageSnapshot(provider.observedUsage || provider.statusUsage || provider.accountUsage, true);
+      const projectSyncValue = formatTimestamp(provider.lastUsageAt);
+      return [
+        '<article class="card" style="--accent:' + accentForIndex(index) + '">',
+          '<div class="card-head">',
+            '<div>',
+              '<h3 class="name">' + escapeHtml(provider.label) + '</h3>',
+              '<div style="color: var(--muted); font-size: 0.82rem; margin-top: 6px;">Project ledger</div>',
+            '</div>',
+            '<span class="badge ' + badgeClass + '">' + escapeHtml(stateLabel) + '</span>',
+          '</div>',
+          '<div class="card-grid ledger-grid">',
+            '<div class="pie small" style="--filled:' + angle + 'deg; --accent:' + accentForIndex(index) + '">',
+              '<div class="pie-label">',
+                '<div class="percent">ledger ' + formatPercent(provider.projectRatio || 0) + '</div>',
+                '<div class="fraction">ledger ' + escapeHtml(projectUsageValue) + '</div>',
+                '<div class="fraction" style="max-width: 136px; color: #cbd5e1;">' + escapeHtml(provider.accountLabel || 'n/a') + '</div>',
+              '</div>',
+            '</div>',
+            '<div class="stats">',
+              '<div class="stat"><span>Project ledger</span><strong title="' + escapeHtml(formatNumber(projectUsed) + ' / ' + formatNumber(provider.limitTokens)) + '">' + escapeHtml(projectUsageValue) + '</strong></div>',
+              '<div class="stat"><span>Project remaining</span><strong title="' + escapeHtml(formatNumber(projectRemaining)) + '">' + formatCompactNumber(projectRemaining) + '</strong></div>',
+              '<div class="stat"><span>Observed usage</span><strong title="' + escapeHtml(formatObservedUsageSnapshot(provider.observedUsage || provider.statusUsage || provider.accountUsage, false)) + '">' + escapeHtml(observedValue) + '</strong></div>',
+              '<div class="stat"><span>Project sync</span><strong title="' + escapeHtml(projectSyncValue) + '">' + escapeHtml(projectSyncValue) + '</strong></div>',
+              '<div class="stat"><span>Session</span><strong title="' + escapeHtml(sessionRef) + '">' + escapeHtml(sessionRef) + '</strong></div>',
+              provider.statusMessage ? '<div class="stat note"><span>Note</span><strong title="' + escapeHtml(provider.statusMessage) + '">' + escapeHtml(provider.statusMessage) + '</strong></div>' : '',
+            '</div>',
+          '</div>',
         '</article>',
       ].join('');
     }
@@ -548,11 +917,16 @@ function buildDashboardHtml(snapshot) {
 
     function render(snapshot) {
       document.getElementById('active-provider').textContent = snapshot.activeProvider ? snapshot.activeProvider.label : '-';
+      document.getElementById('summary-active-provider').textContent = snapshot.activeProvider ? snapshot.activeProvider.label : '-';
+      document.getElementById('summary-next-provider').textContent = snapshot.nextProvider ? snapshot.nextProvider.label : 'none';
       document.getElementById('threshold-value').textContent = formatPercent(snapshot.threshold || 0);
       document.getElementById('total-used').textContent = formatNumber(snapshot.totalUsedTokens);
+      const projectUsed = Number.isFinite(snapshot.totalProjectUsedTokens) ? snapshot.totalProjectUsedTokens : 0;
+      document.getElementById('project-used').textContent = formatNumber(projectUsed);
       document.getElementById('total-limit').textContent = formatNumber(snapshot.totalLimitTokens);
       document.getElementById('project-root').textContent = snapshot.cwd || '-';
-      document.getElementById('cards').innerHTML = (snapshot.providerViews || []).map(renderProviderCard).join('');
+      document.getElementById('account-cards').innerHTML = (snapshot.providerViews || []).map(renderAccountCard).join('');
+      document.getElementById('ledger-cards').innerHTML = (snapshot.providerViews || []).map(renderLedgerCard).join('');
       document.getElementById('handoff-list').innerHTML = renderHandoffList(snapshot.handoffs || []);
       document.getElementById('exchange-list').innerHTML = renderExchangeList(snapshot.recentExchanges || []);
     }

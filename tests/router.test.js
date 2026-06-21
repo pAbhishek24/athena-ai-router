@@ -45,6 +45,20 @@ function createState(config, cwd) {
   return state;
 }
 
+function createIsolatedEnv() {
+  const sandboxHome = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-model-router-sandbox-home-'));
+  return {
+    ...process.env,
+    HOME: sandboxHome,
+    XDG_STATE_HOME: path.join(sandboxHome, '.state'),
+    ATHENA_ROUTER_HOME: path.join(sandboxHome, '.athena-router'),
+    CLAUDE_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'ai-model-router-claude-home-')),
+    CODEX_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'ai-model-router-codex-home-')),
+    GEMINI_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'ai-model-router-gemini-home-')),
+    AI_MODEL_ROUTER_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'ai-model-router-state-home-')),
+  };
+}
+
 test('router switches away from a provider at the threshold without losing context', async () => {
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-model-router-'));
   const config = createConfig();
@@ -55,6 +69,7 @@ test('router switches away from a provider at the threshold without losing conte
     config,
     state,
     cwd,
+    env: createIsolatedEnv(),
     runner: async (command, args) => {
       calls.push({ command, args });
       return {
@@ -94,6 +109,67 @@ test('router switches away from a provider at the threshold without losing conte
   assert.ok(router.state.providerState.codex.usedTokens > 10);
 });
 
+test('router switches based on account-wide usage when the project ledger is still low', async () => {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-model-router-'));
+  const config = createConfig();
+  const state = createState(config, cwd);
+  state.providerState.claude.usedTokens = 10;
+  state.providerState.claude.projectUsedTokens = 10;
+  state.providerState.claude.statusUsage = {
+    totalTokens: 4990,
+    promptTokens: 3000,
+    completionTokens: 1990,
+    source: 'provider-status',
+    scope: 'account',
+  };
+  state.providerState.claude.observedUsage = state.providerState.claude.statusUsage;
+  state.providerState.claude.effectiveUsedTokens = 4990;
+  state.providerState.claude.accountUsedTokens = 4990;
+  state.providerState.claude.observedLastUsageAt = '2026-06-13T10:00:00.000Z';
+  state.providerState.claude.health = 'ready';
+  state.providerState.codex.usedTokens = 0;
+  state.providerState.codex.projectUsedTokens = 0;
+  state.providerState.codex.health = 'ready';
+  state.activeProviderId = 'claude';
+
+  const calls = [];
+  const router = createRouter({
+    config,
+    state,
+    cwd,
+    env: createIsolatedEnv(),
+    runner: async (command, args) => {
+      calls.push({ command, args });
+      return {
+        code: 0,
+        stdout: [
+          JSON.stringify({ type: 'thread.started', thread_id: 'thread-codex' }),
+          JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: 'codex answer' } }),
+          JSON.stringify({
+            type: 'turn.completed',
+            usage: {
+              input_tokens: 12,
+              cached_input_tokens: 2,
+              output_tokens: 8,
+              reasoning_output_tokens: 4,
+            },
+          }),
+        ].join('\n'),
+        stderr: '',
+      };
+    },
+  });
+
+  const result = await router.send('Build the router');
+
+  assert.equal(result.ok, true);
+  assert.equal(result.providerId, 'codex');
+  assert.equal(result.switchedFrom, 'claude');
+  assert.equal(result.handoffReason, 'threshold');
+  assert.equal(calls.length, 1);
+  assert.equal(router.state.activeProviderId, 'codex');
+});
+
 test('router falls back to another provider when the active one fails', async () => {
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-model-router-'));
   const config = createConfig();
@@ -109,6 +185,7 @@ test('router falls back to another provider when the active one fails', async ()
     config,
     state,
     cwd,
+    env: createIsolatedEnv(),
     runner: async (command, args) => {
       calls.push({ command, args });
       if (calls.length === 1) {
@@ -187,6 +264,7 @@ test('router can hand off from a CLI provider to an HTTP local model', async () 
     config,
     state,
     cwd,
+    env: createIsolatedEnv(),
     fetchImpl: async (url, init) => {
       requests.push({
         url,
@@ -258,6 +336,7 @@ test('router uses the built-in command runner when none is provided', async () =
     config,
     state,
     cwd,
+    env: createIsolatedEnv(),
   });
 
   const result = await router.send('Inspect the workspace');
@@ -299,6 +378,7 @@ test('router keeps a provider available when its status probe fails generically'
     config,
     state,
     cwd,
+    env: createIsolatedEnv(),
   });
 
   await router.refreshProviderStatus();

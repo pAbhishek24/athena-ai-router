@@ -143,36 +143,112 @@ function readStdinIfAvailable() {
   });
 }
 
-async function createRuntime(argv) {
+async function createRuntime(argv, options = {}) {
   const parsed = parseArgs(argv);
   const command = parsed._[0] || 'status';
   const commandArgs = parsed._.slice(1);
 
   const configBundle = loadConfig(process.env, { configPath: parsed.configPath || undefined });
-  const daemonInfo = await ensureDaemonRunning(process.env, {
-    configPath: configBundle.configPath,
-    timeoutMs: 20000,
-  });
-  if (!daemonInfo.ready) {
-    throw new Error(`Daemon is not reachable at ${daemonInfo.url}`);
-  }
-  const router = createDaemonClient({
-    cwd: parsed.cwd,
-    env: process.env,
-    config: configBundle.config,
-    baseUrl: daemonInfo.url,
-  });
-  await router.refreshProviderStatus();
-
-  return {
-    command,
-    commandArgs,
-    parsed,
-    router,
-    client: router,
-    configBundle,
-    daemonInfo,
+  const daemonUrl = readDaemonMetadata(process.env)?.url || `http://${configBundle.config.dashboard.host || '127.0.0.1'}:${configBundle.config.dashboard.port || 3077}`;
+  let daemonInfo = {
+    started: false,
+    ready: false,
+    url: daemonUrl,
   };
+
+  if (options.allowLocalFallback) {
+    if (await isDaemonHealthy(daemonUrl)) {
+      daemonInfo = {
+        started: false,
+        ready: true,
+        url: daemonUrl,
+      };
+      const router = createDaemonClient({
+        cwd: parsed.cwd,
+        env: process.env,
+        config: configBundle.config,
+        baseUrl: daemonInfo.url,
+      });
+      await router.refreshProviderStatus();
+
+      return {
+        command,
+        commandArgs,
+        parsed,
+        router,
+        client: router,
+        configBundle,
+        daemonInfo,
+        runtimeMode: 'daemon',
+      };
+    }
+
+    const { state, statePath } = loadState(configBundle.config, parsed.cwd, process.env);
+    const router = createRouter({
+      config: configBundle.config,
+      state,
+      cwd: parsed.cwd,
+      env: process.env,
+      runner: runCommand,
+      statePath,
+      persist: true,
+    });
+    try {
+      await router.refreshProviderStatus();
+    } catch {
+      // Fall back to the local snapshot when provider probing fails.
+    }
+
+    return {
+      command,
+      commandArgs,
+      parsed,
+      router,
+      client: router,
+      configBundle,
+      daemonInfo,
+      runtimeMode: 'local',
+    };
+  }
+
+  const daemonStarter = typeof options.ensureDaemonRunning === 'function' ? options.ensureDaemonRunning : ensureDaemonRunning;
+  const daemonTimeoutMs = Number.isFinite(options.daemonTimeoutMs) ? options.daemonTimeoutMs : 20000;
+
+  try {
+    daemonInfo = await daemonStarter(process.env, {
+      configPath: configBundle.configPath,
+      timeoutMs: daemonTimeoutMs,
+    });
+  } catch {
+    daemonInfo = {
+      started: false,
+      ready: false,
+      url: daemonInfo.url,
+    };
+  }
+
+  if (daemonInfo.ready) {
+    const router = createDaemonClient({
+      cwd: parsed.cwd,
+      env: process.env,
+      config: configBundle.config,
+      baseUrl: daemonInfo.url,
+    });
+    await router.refreshProviderStatus();
+
+    return {
+      command,
+      commandArgs,
+      parsed,
+      router,
+      client: router,
+      configBundle,
+      daemonInfo,
+      runtimeMode: 'daemon',
+    };
+  }
+
+  throw new Error(`Daemon is not reachable at ${daemonInfo.url}`);
 }
 
 async function createStatusRuntime(argv) {
@@ -720,7 +796,13 @@ async function main(argv = process.argv.slice(2)) {
     return;
   }
 
-  const { router } = await createRuntime(argv);
+  const allowLocalFallback = command === 'ask' || command === 'run' || command === 'task' || command === 'chat' || command === 'switch';
+  const runtime = await createRuntime(argv, { allowLocalFallback });
+  const { router } = runtime;
+
+  if (command === 'chat' && runtime.runtimeMode === 'local') {
+    stderr.write('Daemon is not reachable. Chat is running in local router mode.\n');
+  }
 
   if (command === 'ask' || command === 'run') {
     await runAsk(router, parsed, commandArgs);

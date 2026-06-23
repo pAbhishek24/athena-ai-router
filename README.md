@@ -29,7 +29,7 @@ npm install -g ai-model-router
 - `model-router app` launches the native menubar status app and tries to bring up the daemon if it is not already running.
 - `model-router panel` is an alias for `model-router app`.
 - `model-router ask "prompt"` sends one prompt through the active model.
-- `model-router chat` starts an interactive prompt for the active model.
+- `model-router chat` starts an interactive prompt for the active model and falls back to local router mode if the daemon is unavailable.
 - `model-router task "prompt"` runs an agent-style workspace task that can read, write, and execute local commands.
 - `model-router feedback [bug|feature|general] [prompt...]` opens a prefilled GitHub issue form for bug reports, feature requests, or general feedback.
 - `model-router discuss [topic...]` opens the GitHub Discussions board for broader questions, ideas, and community conversation.
@@ -83,6 +83,7 @@ Example shape:
 - `model-router status` and `model-router task` refresh daemon state before each turn, so usage changes made from other terminals or from installed shims show up in the current session.
 - Codex usage is reconciled from Codex's local SQLite state in `~/.codex`. The router ledger uses the current repo cwd only, while the dashboard also shows the account-wide Codex total as observed usage.
 - `model-router task` is the closest mode to a CLI IDE. It asks the model for a JSON action plan and executes workspace tools locally, so file edits and shell commands happen from the router instead of only being described in text.
+- `model-router chat` is the lightweight interactive path. Use it for conversational prompting; the router falls back to local mode if the daemon is not running.
 - `model-router app` or `model-router panel` opens the native menubar app. It uses an embedded WebKit view, has a manual Refresh button, and will try to reconnect the daemon on launch.
 - `model-router serve` is the browser/debug endpoint if you want to inspect the dashboard URL directly.
 - To track direct CLI usage, run `model-router shims install` and source `~/.ai-model-router/shims/env.sh` in the shells that should use the wrappers.

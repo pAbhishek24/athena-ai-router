@@ -10,6 +10,7 @@ const { ensureRouterStructure, getConfigPath } = require('./paths');
 const { createDaemonClient, createDaemonServer, ensureDaemonRunning, isDaemonHealthy, readDaemonMetadata, stopDaemon } = require('./daemon');
 const { launchNativeStatusApp } = require('./native-app');
 const { installShims, removeShims, runShimExec, summarizeShims } = require('./shims');
+const { buildFeedbackIssueUrl, normalizeFeedbackType, getRepositoryWebUrl } = require('./feedback');
 const { renderStatusText } = require('./dashboard');
 const { createRouter } = require('./router');
 const { loadState } = require('./store');
@@ -32,6 +33,7 @@ function printUsage() {
     `  ${COMMAND_NAME} ask [prompt...]`,
     `  ${COMMAND_NAME} chat`,
     `  ${COMMAND_NAME} task [prompt...]`,
+    `  ${COMMAND_NAME} feedback [bug|feature|general] [prompt...]`,
     `  ${COMMAND_NAME} switch <providerId>`,
     `  ${COMMAND_NAME} shims <install|uninstall|status|exec>`,
     '',
@@ -376,6 +378,27 @@ async function runTask(router, parsed, commandArgs) {
   }
 }
 
+async function runFeedback(parsed, commandArgs) {
+  const kindCandidate = String(commandArgs[0] || '').trim().toLowerCase();
+  const recognizedKind = ['bug', 'feature', 'general', 'issue'].includes(kindCandidate) ? kindCandidate : '';
+  const kind = normalizeFeedbackType(recognizedKind);
+  const promptArgs = recognizedKind ? commandArgs.slice(1) : commandArgs;
+  const promptFromArgs = promptArgs.join(' ').trim();
+  const stdinPrompt = promptFromArgs || (await readStdinIfAvailable());
+  const context = {
+    command: `${COMMAND_NAME} feedback${kind !== 'general' ? ` ${kind}` : ''}`,
+    cwd: parsed.cwd || process.cwd(),
+    repositoryUrl: getRepositoryWebUrl(),
+  };
+  const url = buildFeedbackIssueUrl(kind, stdinPrompt, context);
+
+  stdout.write(`Opening feedback form: ${url}\n`);
+  const opened = await openUrl(url);
+  if (!opened) {
+    stdout.write('Unable to open a browser automatically. Copy the URL above.\n');
+  }
+}
+
 async function runChat(router) {
   const rl = readline.createInterface({ input: stdin, output: stdout, terminal: true });
   stdout.write(`${APP_NAME} chat. Type instructions for the active model. Use /task <prompt> for workspace actions, /status, /switch <providerId>, /exit.\n`);
@@ -664,6 +687,11 @@ async function main(argv = process.argv.slice(2)) {
     return;
   }
 
+  if (command === 'feedback') {
+    await runFeedback(parsed, commandArgs);
+    return;
+  }
+
   const { router } = await createRuntime(argv);
 
   if (command === 'ask' || command === 'run') {
@@ -707,4 +735,5 @@ module.exports = {
   runServe,
   runSwitch,
   runTask,
+  runFeedback,
 };

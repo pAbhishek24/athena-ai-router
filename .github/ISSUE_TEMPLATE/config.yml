@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: AI Model Router documentation
+    url: https://github.com/pAbhishek24/athena-ai-router#readme
+    about: Check the setup and usage docs before opening an issue.

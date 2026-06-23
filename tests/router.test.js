@@ -341,15 +341,6 @@ test('router falls back when Gemini reports an unsupported client', async () => 
     env: createIsolatedEnv(),
     runner: async () => {
       calls.push(true);
-      if (calls.length === 1) {
-        return {
-          code: 1,
-          stdout: '',
-          stderr:
-            'IneligibleTierError: This client is no longer supported for Gemini Code Assist for individuals. To continue using Gemini, please migrate to the Antigravity suite of products: https://antigravity.google.',
-        };
-      }
-
       return {
         code: 0,
         stdout: [
@@ -368,7 +359,7 @@ test('router falls back when Gemini reports an unsupported client', async () => 
   assert.equal(result.switchedFrom, 'gemini');
   assert.equal(result.handoffReason, 'failure');
   assert.equal(result.text, 'fallback answer');
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, 1);
   assert.equal(router.state.activeProviderId, 'codex');
 });
 

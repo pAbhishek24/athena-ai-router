@@ -716,7 +716,7 @@ function formatProviderErrorMessage(provider, message = '') {
 function classifyFailure(message = '', provider = null) {
   const text = String(message).toLowerCase();
   if (provider && provider.id === 'gemini' && isGeminiUnsupportedClient(text)) {
-    return 'missing';
+    return 'disabled';
   }
   if (text.includes('not logged in') || text.includes('unauthorized') || text.includes('authentication')) {
     return 'auth';

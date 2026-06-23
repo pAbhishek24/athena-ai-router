@@ -14,7 +14,7 @@ const { appendExchange, recordHandoff, saveState, truncate, updateProviderUsage 
 const { estimateTokens } = require('./usage');
 
 const DEFAULT_RESERVED_OUTPUT_TOKENS = 1024;
-const UNAVAILABLE_HEALTH = new Set(['missing', 'auth', 'sandbox', 'offline']);
+const UNAVAILABLE_HEALTH = new Set(['missing', 'auth', 'sandbox', 'offline', 'disabled']);
 const HARD_PROBE_HEALTH = new Set(['ready', 'auth', 'missing', 'offline', 'sandbox', 'disabled']);
 
 function compactText(text, maxChars) {

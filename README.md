@@ -32,6 +32,7 @@ npm install -g ai-model-router
 - `model-router chat` starts an interactive prompt for the active model.
 - `model-router task "prompt"` runs an agent-style workspace task that can read, write, and execute local commands.
 - `model-router feedback [bug|feature|general] [prompt...]` opens a prefilled GitHub issue form for bug reports, feature requests, or general feedback.
+- `model-router discuss [topic...]` opens the GitHub Discussions board for broader questions, ideas, and community conversation.
 - `model-router shims install` writes optional wrappers for direct Claude/Codex/Gemini CLI usage.
 - `model-router shims status` shows which wrappers are installed.
 - `model-router init` creates a starter config in `~/.ai-model-router/config.json`.
@@ -86,6 +87,7 @@ Example shape:
 - `model-router serve` is the browser/debug endpoint if you want to inspect the dashboard URL directly.
 - To track direct CLI usage, run `model-router shims install` and source `~/.ai-model-router/shims/env.sh` in the shells that should use the wrappers.
 - To collect feedback, use `model-router feedback` or create a GitHub issue from the templates in [`.github/ISSUE_TEMPLATE`](./.github/ISSUE_TEMPLATE/).
+- For open-ended conversation, use `model-router discuss` or open the GitHub Discussions board from the repository page.
 
 ## Release
 

@@ -11,6 +11,7 @@ const { createDaemonClient, createDaemonServer, ensureDaemonRunning, isDaemonHea
 const { launchNativeStatusApp } = require('./native-app');
 const { installShims, removeShims, runShimExec, summarizeShims } = require('./shims');
 const { buildFeedbackIssueUrl, normalizeFeedbackType, getRepositoryWebUrl } = require('./feedback');
+const { buildDiscussionsBoardUrl, buildDiscussionSuggestion } = require('./discussions');
 const { renderStatusText } = require('./dashboard');
 const { createRouter } = require('./router');
 const { loadState } = require('./store');
@@ -34,6 +35,7 @@ function printUsage() {
     `  ${COMMAND_NAME} chat`,
     `  ${COMMAND_NAME} task [prompt...]`,
     `  ${COMMAND_NAME} feedback [bug|feature|general] [prompt...]`,
+    `  ${COMMAND_NAME} discuss [topic...]`,
     `  ${COMMAND_NAME} switch <providerId>`,
     `  ${COMMAND_NAME} shims <install|uninstall|status|exec>`,
     '',
@@ -399,6 +401,27 @@ async function runFeedback(parsed, commandArgs) {
   }
 }
 
+async function runDiscuss(parsed, commandArgs) {
+  const promptFromArgs = commandArgs.join(' ').trim();
+  const stdinPrompt = promptFromArgs || (await readStdinIfAvailable());
+  const discussionUrl = buildDiscussionsBoardUrl();
+  const suggestion = buildDiscussionSuggestion(stdinPrompt, {
+    command: `${COMMAND_NAME} discuss`,
+    cwd: parsed.cwd || process.cwd(),
+  });
+
+  stdout.write(`Opening GitHub Discussions: ${discussionUrl}\n`);
+  stdout.write(`Suggested title: ${suggestion.title}\n`);
+  if (suggestion.body.trim()) {
+    stdout.write(`Suggested starter:\n${suggestion.body}\n`);
+  }
+
+  const opened = await openUrl(discussionUrl);
+  if (!opened) {
+    stdout.write('Unable to open a browser automatically. Copy the URL above.\n');
+  }
+}
+
 async function runChat(router) {
   const rl = readline.createInterface({ input: stdin, output: stdout, terminal: true });
   stdout.write(`${APP_NAME} chat. Type instructions for the active model. Use /task <prompt> for workspace actions, /status, /switch <providerId>, /exit.\n`);
@@ -692,6 +715,11 @@ async function main(argv = process.argv.slice(2)) {
     return;
   }
 
+  if (command === 'discuss') {
+    await runDiscuss(parsed, commandArgs);
+    return;
+  }
+
   const { router } = await createRuntime(argv);
 
   if (command === 'ask' || command === 'run') {
@@ -732,6 +760,7 @@ module.exports = {
   runAsk,
   runChat,
   runInit,
+  runDiscuss,
   runServe,
   runSwitch,
   runTask,

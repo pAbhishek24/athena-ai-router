@@ -124,6 +124,7 @@ module.exports = {
   buildFeedbackBody,
   buildFeedbackIssueUrl,
   buildFeedbackTitle,
+  compactText,
   getRepositoryWebUrl,
   normalizeFeedbackType,
 };

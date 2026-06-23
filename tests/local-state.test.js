@@ -300,6 +300,9 @@ test('gemini history sync is account-wide and preserves the active account label
   assert.equal(router.state.providerState.gemini.usedTokens, 0);
   assert.equal(router.state.providerState.gemini.statusUsage.totalTokens, 25);
   assert.equal(router.state.providerState.gemini.effectiveUsedTokens, 25);
+  assert.equal(router.state.providerState.gemini.health, 'disabled');
+  assert.equal(router.state.providerState.gemini.authState, 'disabled');
+  assert.match(router.state.providerState.gemini.statusMessage, /Gemini CLI is no longer supported for individual accounts/);
   assert.equal(router.state.providerState.gemini.observedLastUsageAt, '2026-06-13T11:45:00.000Z');
   assert.equal(snapshot.totalUsedTokens, 25);
   assert.equal(snapshot.totalProjectUsedTokens, 0);

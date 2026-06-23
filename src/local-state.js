@@ -4,6 +4,7 @@ const path = require('path');
 const { URL } = require('url');
 const { spawnSync } = require('child_process');
 const { resolveCommand } = require('./runner');
+const { getGeminiUnsupportedMessage } = require('./providers');
 const { normalizeClaudeUsage, toNumber } = require('./usage');
 
 function readJsonSafe(filePath) {
@@ -659,10 +660,10 @@ function collectGeminiSnapshot(env = process.env) {
 
   return {
     source: 'gemini-local-history',
-    health: 'ready',
-    authState: 'ready',
+    health: 'disabled',
+    authState: 'disabled',
     accountLabel: activeAccount,
-    statusMessage: `Gemini history synced from ${files.length} chat files`,
+    statusMessage: getGeminiUnsupportedMessage(),
     usedTokens: 0,
     projectUsedTokens: 0,
     accountUsedTokens: accountUsage.totalTokens,

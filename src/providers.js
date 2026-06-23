@@ -888,6 +888,7 @@ module.exports = {
   executeHttpProvider,
   executeProvider,
   formatProviderErrorMessage,
+  getGeminiUnsupportedMessage,
   probeProviderStatus,
   getPathValue,
   getProviderTransport,

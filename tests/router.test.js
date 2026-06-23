@@ -356,10 +356,79 @@ test('router falls back when Gemini reports an unsupported client', async () => 
 
   assert.equal(result.ok, true);
   assert.equal(result.providerId, 'codex');
-  assert.equal(result.switchedFrom, 'gemini');
-  assert.equal(result.handoffReason, 'failure');
+  assert.equal(result.switchedFrom, null);
+  assert.equal(result.handoffReason, null);
   assert.equal(result.text, 'fallback answer');
   assert.equal(calls.length, 1);
+  assert.equal(router.state.activeProviderId, 'codex');
+});
+
+test('router skips Gemini during fallback even when Gemini history looks healthy', async () => {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-model-router-'));
+  const config = {
+    ...createConfig(),
+    providers: [
+      createConfig().providers[0],
+      createConfig().providers[1],
+      {
+        id: 'gemini',
+        label: 'Gemini',
+        command: 'node',
+        args: ['-p', '--output-format', 'json'],
+        budgetTokens: 10000,
+        model: '',
+        enabled: true,
+      },
+    ],
+  };
+  const state = createDefaultState(config, cwd);
+  state.providerState.claude.usedTokens = 150000;
+  state.providerState.claude.health = 'ready';
+  state.providerState.codex.usedTokens = 1000;
+  state.providerState.codex.health = 'ready';
+  state.providerState.gemini.usedTokens = 0;
+  state.providerState.gemini.health = 'ready';
+  state.activeProviderId = 'codex';
+
+  const calls = [];
+  const router = createRouter({
+    config,
+    state,
+    cwd,
+    env: createIsolatedEnv(),
+    runner: async (command, args) => {
+      calls.push({ command, args });
+      if (calls.length === 1) {
+        return {
+          code: 1,
+          stdout: '',
+          stderr: 'temporary failure',
+        };
+      }
+
+      return {
+        code: 0,
+        stdout: JSON.stringify({
+          result: 'claude answer',
+          session_id: 'thread-claude',
+          usage: {
+            input_tokens: 7,
+            output_tokens: 9,
+          },
+        }),
+        stderr: '',
+      };
+    },
+  });
+
+  const result = await router.send('Continue the task');
+
+  assert.equal(result.ok, true);
+  assert.equal(result.providerId, 'claude');
+  assert.equal(result.switchedFrom, 'gemini');
+  assert.equal(result.handoffReason, 'failure');
+  assert.equal(result.text, 'claude answer');
+  assert.equal(calls.length, 2);
   assert.equal(router.state.activeProviderId, 'codex');
 });
 

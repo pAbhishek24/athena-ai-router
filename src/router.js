@@ -156,6 +156,10 @@ function providerHeadroomRatio(state, provider) {
 }
 
 function isProviderAvailable(state, provider) {
+  if (!provider || provider.id === 'gemini') {
+    return false;
+  }
+
   if (provider.enabled === false) {
     return false;
   }
@@ -174,13 +178,26 @@ function isProviderAvailable(state, provider) {
 
 function chooseActiveProvider(config, state) {
   const byId = new Map(config.providers.map((provider) => [provider.id, provider]));
-  if (state.activeProviderId && byId.has(state.activeProviderId)) {
-    return byId.get(state.activeProviderId);
+  const candidates = [];
+
+  if (state.activeProviderId) {
+    candidates.push(state.activeProviderId);
   }
-  if (config.defaultProviderId && byId.has(config.defaultProviderId)) {
-    return byId.get(config.defaultProviderId);
+  if (config.defaultProviderId) {
+    candidates.push(config.defaultProviderId);
   }
-  return config.providers[0] || null;
+  for (const provider of config.providers) {
+    candidates.push(provider.id);
+  }
+
+  for (const providerId of candidates) {
+    const provider = byId.get(providerId);
+    if (provider && isProviderAvailable(state, provider)) {
+      return provider;
+    }
+  }
+
+  return null;
 }
 
 function buildProviderOrder(config, state) {

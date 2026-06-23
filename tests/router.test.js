@@ -309,6 +309,67 @@ test('router can hand off from a CLI provider to an HTTP local model', async () 
   assert.equal(router.state.activeProviderId, 'lmstudio');
 });
 
+test('router falls back when Gemini reports an unsupported client', async () => {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-model-router-'));
+  const config = {
+    ...createConfig(),
+    providers: [
+      {
+        id: 'gemini',
+        label: 'Gemini',
+        command: 'node',
+        args: ['-p', '--output-format', 'json'],
+        budgetTokens: 10000,
+        model: '',
+        enabled: true,
+      },
+      createConfig().providers[1],
+    ],
+  };
+  const state = createDefaultState(config, cwd);
+  state.providerState.gemini.health = 'ready';
+  state.providerState.codex.health = 'ready';
+  state.activeProviderId = 'gemini';
+
+  const calls = [];
+  const router = createRouter({
+    config,
+    state,
+    cwd,
+    env: createIsolatedEnv(),
+    runner: async () => {
+      calls.push(true);
+      if (calls.length === 1) {
+        return {
+          code: 1,
+          stdout: '',
+          stderr:
+            'IneligibleTierError: This client is no longer supported for Gemini Code Assist for individuals. To continue using Gemini, please migrate to the Antigravity suite of products: https://antigravity.google.',
+        };
+      }
+
+      return {
+        code: 0,
+        stdout: [
+          JSON.stringify({ type: 'thread.started', thread_id: 'thread-codex' }),
+          JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: 'fallback answer' } }),
+        ].join('\n'),
+        stderr: '',
+      };
+    },
+  });
+
+  const result = await router.send('Continue the task');
+
+  assert.equal(result.ok, true);
+  assert.equal(result.providerId, 'codex');
+  assert.equal(result.switchedFrom, 'gemini');
+  assert.equal(result.handoffReason, 'failure');
+  assert.equal(result.text, 'fallback answer');
+  assert.equal(calls.length, 2);
+  assert.equal(router.state.activeProviderId, 'codex');
+});
+
 test('router uses the built-in command runner when none is provided', async () => {
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-model-router-'));
   const config = {

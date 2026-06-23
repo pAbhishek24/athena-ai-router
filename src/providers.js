@@ -368,9 +368,12 @@ async function probeProviderStatus(provider, { cwd, env, runner = runCommand, fe
       const responseText = await response.text();
       const parsed = safeParseJson(responseText) || {};
       if (!response.ok) {
-        const message = parsed?.error?.message || parsed?.message || parsed?.error || responseText || `HTTP ${response.status} ${response.statusText}`;
+        const message = formatProviderErrorMessage(
+          provider,
+          parsed?.error?.message || parsed?.message || parsed?.error || responseText || `HTTP ${response.status} ${response.statusText}`
+        );
         return {
-          health: classifyFailure(message),
+          health: classifyFailure(message, provider),
           authState: normalizeAuthState(message, 'offline'),
           accountLabel: null,
           statusMessage: message,
@@ -391,9 +394,9 @@ async function probeProviderStatus(provider, { cwd, env, runner = runCommand, fe
         raw: parsed,
       };
     } catch (error) {
-      const message = error && error.message ? error.message : String(error);
+      const message = formatProviderErrorMessage(provider, error && error.message ? error.message : String(error));
       return {
-        health: classifyFailure(message),
+        health: classifyFailure(message, provider),
         authState: normalizeAuthState(message, 'offline'),
         accountLabel: null,
         statusMessage: message,
@@ -427,21 +430,22 @@ async function probeProviderStatus(provider, { cwd, env, runner = runCommand, fe
     const payload = parsed && typeof parsed === 'object' ? parsed : { status: trimmed };
     const metadata = extractStatusMetadata(provider, payload, String(rawResult.stderr || '').trim() || trimmed);
     const errorText = String(rawResult.stderr || '').trim();
-    const exitHealth = rawResult.code === 0 ? 'ready' : classifyFailure(errorText || trimmed);
+    const exitHealth = rawResult.code === 0 ? 'ready' : classifyFailure(errorText || trimmed, provider);
     const health = metadata.authState === 'auth' ? 'auth' : exitHealth;
+    const statusMessage = formatProviderErrorMessage(provider, metadata.statusMessage || errorText || trimmed);
     return {
       health,
       authState: metadata.authState === 'unknown' && rawResult.code === 0 ? 'ready' : metadata.authState,
       accountLabel: metadata.accountLabel,
-      statusMessage: metadata.statusMessage,
+      statusMessage,
       usage: metadata.usage,
       lastStatusAt: now,
       raw: parsed || trimmed || rawResult,
     };
   } catch (error) {
-    const message = error && error.message ? error.message : String(error);
+    const message = formatProviderErrorMessage(provider, error && error.message ? error.message : String(error));
     return {
-      health: classifyFailure(message),
+      health: classifyFailure(message, provider),
       authState: normalizeAuthState(message, 'error'),
       accountLabel: null,
       statusMessage: message,
@@ -669,8 +673,35 @@ function buildHttpError(error, provider) {
   };
 }
 
-function classifyFailure(message = '') {
+function isGeminiUnsupportedClient(message = '') {
+  const text = String(message || '').toLowerCase();
+  return (
+    text.includes('ineligibletiererror') ||
+    text.includes('this client is no longer supported') ||
+    text.includes('gemini code assist for individuals') ||
+    text.includes('migrate to the antigravity suite') ||
+    text.includes('unsupported client')
+  );
+}
+
+function formatProviderErrorMessage(provider, message = '') {
+  const text = String(message || '').trim();
+  if (!text) {
+    return '';
+  }
+
+  if (provider && provider.id === 'gemini' && isGeminiUnsupportedClient(text)) {
+    return 'Gemini CLI is no longer supported for individual accounts. Use another provider or migrate to Antigravity.';
+  }
+
+  return text;
+}
+
+function classifyFailure(message = '', provider = null) {
   const text = String(message).toLowerCase();
+  if (provider && provider.id === 'gemini' && isGeminiUnsupportedClient(text)) {
+    return 'missing';
+  }
   if (text.includes('not logged in') || text.includes('unauthorized') || text.includes('authentication')) {
     return 'auth';
   }
@@ -722,6 +753,7 @@ async function executeCommandProvider(provider, { prompt, sessionRef, cwd, env, 
 
   return {
     ...parsed,
+    errorMessage: parsed.errorMessage ? formatProviderErrorMessage(provider, parsed.errorMessage) : null,
     transport: 'command',
     raw: rawResult,
   };
@@ -788,7 +820,7 @@ async function executeHttpProvider(provider, { prompt, cwd, env, fetchImpl = glo
         usage: null,
         raw: parsedPayload || responseText,
         errorMessage: message,
-        failureType: classifyFailure(message),
+        failureType: classifyFailure(message, provider),
         transport: 'http',
       };
     }
@@ -801,6 +833,7 @@ async function executeHttpProvider(provider, { prompt, cwd, env, fetchImpl = glo
 
     return {
       ...parsed,
+      errorMessage: parsed.errorMessage ? formatProviderErrorMessage(provider, parsed.errorMessage) : null,
       transport: 'http',
       raw: parsedPayload || responseText,
     };
@@ -812,8 +845,8 @@ async function executeHttpProvider(provider, { prompt, cwd, env, fetchImpl = glo
       sessionRef: null,
       usage: null,
       raw: null,
-      errorMessage: message,
-      failureType: classifyFailure(message),
+      errorMessage: formatProviderErrorMessage(provider, message),
+      failureType: classifyFailure(message, provider),
       transport: 'http',
     };
   } finally {
@@ -838,6 +871,7 @@ module.exports = {
   executeCommandProvider,
   executeHttpProvider,
   executeProvider,
+  formatProviderErrorMessage,
   probeProviderStatus,
   getPathValue,
   getProviderTransport,

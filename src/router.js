@@ -1,6 +1,13 @@
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { executeProvider, getProviderTransport, probeProviderStatus, resolveProviderCommand, classifyFailure: classifyProviderFailure } = require('./providers');
+const {
+  executeProvider,
+  getProviderTransport,
+  probeProviderStatus,
+  resolveProviderCommand,
+  classifyFailure: classifyProviderFailure,
+  formatProviderErrorMessage,
+} = require('./providers');
 const { commandExists, runCommand } = require('./runner');
 const { collectProviderSnapshot } = require('./local-state');
 const { appendExchange, recordHandoff, saveState, truncate, updateProviderUsage } = require('./store');
@@ -630,34 +637,37 @@ class Router {
           fetchImpl: this.fetchImpl,
         });
       } catch (error) {
-        const failureType = classifyProviderFailure(error && error.message ? error.message : String(error));
+        const rawMessage = error && error.message ? error.message : String(error);
+        const message = formatProviderErrorMessage(provider, rawMessage);
+        const failureType = classifyProviderFailure(message, provider);
         const stats = getProviderStats(this.state, provider.id);
         stats.health = failureType;
-        stats.lastError = error && error.message ? error.message : String(error);
+        stats.lastError = message;
         lastFailure = {
           providerId: provider.id,
-          errorMessage: stats.lastError,
+          errorMessage: message,
           failureType,
         };
         pendingHandoffFrom = provider;
         pendingHandoffReason = 'failure';
-        pendingHandoffErrorMessage = stats.lastError;
+        pendingHandoffErrorMessage = message;
         continue;
       }
 
       if (!execution.ok) {
-        const failureType = execution.failureType || classifyProviderFailure(execution.errorMessage || '');
+        const message = formatProviderErrorMessage(provider, execution.errorMessage || `Provider ${provider.id} failed`);
+        const failureType = execution.failureType || classifyProviderFailure(message, provider);
         const stats = getProviderStats(this.state, provider.id);
         stats.health = failureType;
-        stats.lastError = execution.errorMessage || `Provider ${provider.id} failed`;
+        stats.lastError = message;
         lastFailure = {
           providerId: provider.id,
-          errorMessage: stats.lastError,
+          errorMessage: message,
           failureType,
         };
         pendingHandoffFrom = provider;
         pendingHandoffReason = 'failure';
-        pendingHandoffErrorMessage = stats.lastError;
+        pendingHandoffErrorMessage = message;
         continue;
       }
 

@@ -239,3 +239,28 @@ test('probeProviderStatus reads structured auth and account metadata', async () 
   assert.equal(result.accountLabel, 'user@example.com');
   assert.equal(result.usage.totalTokens, 12);
 });
+
+test('probeProviderStatus collapses Gemini unsupported-client errors', async () => {
+  const result = await probeProviderStatus(
+    {
+      id: 'gemini',
+      command: 'node',
+      status: {
+        command: 'node',
+        args: [
+          '-e',
+          'process.stderr.write("IneligibleTierError: This client is no longer supported for Gemini Code Assist for individuals. To continue using Gemini, please migrate to the Antigravity suite of products: https://antigravity.google."); process.exit(1);',
+        ],
+      },
+    },
+    {
+      cwd: process.cwd(),
+    }
+  );
+
+  assert.equal(result.health, 'missing');
+  assert.equal(
+    result.statusMessage,
+    'Gemini CLI is no longer supported for individual accounts. Use another provider or migrate to Antigravity.'
+  );
+});

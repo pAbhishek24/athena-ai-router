@@ -195,8 +195,22 @@ function parseGenericOutput(stdout, stderr, exitCode, promptText = '') {
   };
 }
 
+function isGeminiUnsupportedClient(message = '') {
+  const text = String(message || '').toLowerCase();
+  return (
+    text.includes('ineligibletiererror') ||
+    text.includes('this client is no longer supported') ||
+    text.includes('gemini code assist for individuals') ||
+    text.includes('migrate to the antigravity suite') ||
+    text.includes('unsupported client')
+  );
+}
+
 function classifyFailure(message = '') {
   const text = String(message).toLowerCase();
+  if (isGeminiUnsupportedClient(text)) {
+    return 'missing';
+  }
   if (text.includes('not logged in') || text.includes('unauthorized') || text.includes('authentication')) {
     return 'auth';
   }
@@ -222,4 +236,3 @@ module.exports = {
   safeParseJson,
   toNumber,
 };
-

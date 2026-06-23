@@ -106,7 +106,7 @@ function renderStatusText(snapshot) {
   lines.push(`Active provider: ${snapshot.activeProvider ? snapshot.activeProvider.label : 'none'}`);
   lines.push(`Next fallback: ${snapshot.nextProvider ? snapshot.nextProvider.label : 'none'}`);
   lines.push('');
-  lines.push('Provider accounts');
+  lines.push('Providers');
   lines.push('-'.repeat(72));
 
   for (const provider of snapshot.providerViews) {
@@ -115,52 +115,27 @@ function renderStatusText(snapshot) {
     const projectUsed = Number.isFinite(provider.projectUsedTokens) ? provider.projectUsedTokens : provider.usedTokens;
     const accountUsage = `${formatNumber(accountUsed)} / ${formatNumber(provider.limitTokens)}`;
     const projectUsage = `${formatNumber(projectUsed)} / ${formatNumber(provider.limitTokens)}`;
-    const remaining = formatNumber(provider.remainingTokens);
-    const observed = formatObservedUsageSnapshot(provider.observedUsage || provider.statusUsage || provider.accountUsage);
     const auth = String(provider.authState || 'unknown');
     const health = provider.health || 'unknown';
     const prefix = provider.isActive ? '>' : ' ';
-    lines.push(`${prefix} ${provider.label} [${state}] account ${accountUsage} ledger ${projectUsage} remaining ${remaining} auth ${auth} health ${health} usage ${formatPercent(provider.ratio)} ledger ${formatPercent(provider.projectRatio || 0)}`);
-    lines.push(`  observed: ${observed}`);
+    lines.push(`${prefix} ${provider.label} [${state}] account ${accountUsage} project ${projectUsage} auth ${auth} health ${health}`);
     if (provider.accountLabel) {
       lines.push(`  account: ${provider.accountLabel}`);
     }
-    lines.push(`  router ledger: ${projectUsage} remaining ${formatNumber(provider.projectRemainingTokens)}`);
     if (provider.statusMessage) {
       lines.push(`  note: ${provider.statusMessage}`);
     }
+    const syncParts = [];
     if (provider.lastUsageAt) {
-      lines.push(`  project sync: ${formatTimestamp(provider.lastUsageAt)}`);
-    } else {
-      lines.push('  project sync: n/a');
+      syncParts.push(`project ${formatTimestamp(provider.lastUsageAt)}`);
     }
     if (provider.observedLastUsageAt) {
-      lines.push(`  observed sync: ${formatTimestamp(provider.observedLastUsageAt)}`);
+      syncParts.push(`observed ${formatTimestamp(provider.observedLastUsageAt)}`);
     }
-    if (provider.lastSessionRef) {
-      lines.push(`  session: ${formatSessionRef(provider.lastSessionRef)}`);
-    }
-  }
-
-  lines.push('');
-  lines.push('Project ledgers');
-  lines.push('-'.repeat(72));
-  for (const provider of snapshot.providerViews) {
-    const state = provider.stateLabel || (provider.isActive ? 'active' : provider.enabled === false ? 'disabled' : 'inactive');
-    const projectUsed = Number.isFinite(provider.projectUsedTokens) ? provider.projectUsedTokens : provider.usedTokens;
-    const projectUsage = `${formatNumber(projectUsed)} / ${formatNumber(provider.limitTokens)}`;
-    const prefix = provider.isActive ? '>' : ' ';
-    lines.push(`${prefix} ${provider.label} [${state}] ledger ${projectUsage} remaining ${formatNumber(provider.projectRemainingTokens)} ratio ${formatPercent(provider.projectRatio || 0)}`);
-    if (provider.accountLabel) {
-      lines.push(`  account: ${provider.accountLabel}`);
-    }
-    if (provider.lastUsageAt) {
-      lines.push(`  project sync: ${formatTimestamp(provider.lastUsageAt)}`);
+    if (syncParts.length) {
+      lines.push(`  sync: ${syncParts.join(' · ')}`);
     } else {
-      lines.push('  project sync: n/a');
-    }
-    if (provider.observedLastUsageAt) {
-      lines.push(`  observed sync: ${formatTimestamp(provider.observedLastUsageAt)}`);
+      lines.push('  sync: n/a');
     }
     if (provider.lastSessionRef) {
       lines.push(`  session: ${formatSessionRef(provider.lastSessionRef)}`);
@@ -318,8 +293,8 @@ function buildDashboardHtml(snapshot) {
     .summary-card {
       display: grid;
       gap: 6px;
-      min-height: 104px;
-      padding: 14px 16px;
+      min-height: 92px;
+      padding: 12px 14px;
       border-radius: 18px;
       background: rgba(2, 6, 23, 0.42);
       border: 1px solid rgba(148, 163, 184, 0.14);
@@ -332,7 +307,7 @@ function buildDashboardHtml(snapshot) {
       letter-spacing: 0.18em;
     }
     .summary-card strong {
-      font-size: 1.35rem;
+      font-size: 1.2rem;
       line-height: 1.1;
     }
     .summary-card small {
@@ -348,7 +323,7 @@ function buildDashboardHtml(snapshot) {
       display: flex;
       align-items: stretch;
       justify-content: stretch;
-      min-height: 104px;
+      min-height: 92px;
     }
     .summary-actions button {
       width: 100%;
@@ -386,15 +361,12 @@ function buildDashboardHtml(snapshot) {
       gap: 20px;
     }
     .account-cards {
-      grid-template-columns: repeat(auto-fit, minmax(520px, 1fr));
-    }
-    .ledger-cards {
-      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(600px, 1fr));
     }
     .card {
       position: relative;
       overflow: hidden;
-      padding: 20px;
+      padding: 18px;
       border-radius: var(--radius);
       background: linear-gradient(180deg, rgba(15, 23, 42, 0.92), rgba(15, 23, 42, 0.76));
       border: 1px solid var(--panel-border);
@@ -449,17 +421,14 @@ function buildDashboardHtml(snapshot) {
     }
     .card-grid {
       display: grid;
-      grid-template-columns: 194px minmax(0, 1fr);
-      gap: 20px;
+      grid-template-columns: 176px minmax(0, 1fr);
+      gap: 16px;
       align-items: start;
-    }
-    .card-grid.ledger-grid {
-      grid-template-columns: 154px minmax(0, 1fr);
     }
     .pie {
       --filled: 0deg;
       --accent: #22c55e;
-      width: 194px;
+      width: 176px;
       aspect-ratio: 1;
       border-radius: 50%;
       background: conic-gradient(var(--accent) 0 var(--filled), rgba(148, 163, 184, 0.13) var(--filled) 360deg);
@@ -475,7 +444,7 @@ function buildDashboardHtml(snapshot) {
     .pie::after {
       content: "";
       position: absolute;
-      inset: 24px;
+      inset: 22px;
       border-radius: 50%;
       background: rgba(15, 23, 42, 0.95);
       border: 1px solid rgba(255, 255, 255, 0.06);
@@ -517,7 +486,7 @@ function buildDashboardHtml(snapshot) {
       color: var(--muted);
       font-size: 0.9rem;
       min-width: 0;
-      padding: 10px 12px;
+      padding: 8px 10px;
       border-radius: 14px;
       background: rgba(255, 255, 255, 0.04);
       border: 1px solid rgba(148, 163, 184, 0.1);
@@ -564,9 +533,7 @@ function buildDashboardHtml(snapshot) {
       border: 1px solid rgba(34, 197, 94, 0.2);
     }
     .feed {
-      margin-top: 24px;
-      display: grid;
-      gap: 16px;
+      margin-top: 20px;
     }
     .feed-card {
       padding: 18px 20px;
@@ -603,6 +570,44 @@ function buildDashboardHtml(snapshot) {
       color: var(--muted);
       font-size: 0.85rem;
     }
+    .activity {
+      margin-top: 20px;
+      padding: 18px 20px;
+      border: 1px solid var(--panel-border);
+      border-radius: var(--radius);
+      background: rgba(15, 23, 42, 0.82);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(16px);
+    }
+    .activity > summary {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 16px;
+      cursor: pointer;
+      list-style: none;
+    }
+    .activity > summary::-webkit-details-marker {
+      display: none;
+    }
+    .activity-title {
+      margin: 0;
+      font-size: 1rem;
+      text-transform: uppercase;
+      letter-spacing: 0.18em;
+      color: var(--muted);
+    }
+    .activity-note {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 0.92rem;
+      line-height: 1.45;
+    }
+    .activity-grid {
+      display: grid;
+      gap: 16px;
+      margin-top: 16px;
+    }
     @keyframes rise {
       from { opacity: 0; transform: translateY(10px); }
       to { opacity: 1; transform: translateY(0); }
@@ -611,10 +616,9 @@ function buildDashboardHtml(snapshot) {
       .shell { padding: 16px; }
       .card-grid { grid-template-columns: 1fr; }
       .account-cards,
-      .ledger-cards,
       .summary-strip { grid-template-columns: 1fr; }
       .pie { width: 160px; }
-      .pie.small { width: 160px; }
+      .activity > summary { align-items: flex-start; flex-direction: column; }
     }
   </style>
 </head>
@@ -623,7 +627,7 @@ function buildDashboardHtml(snapshot) {
     <section class="hero">
       <div>
         <h1 class="title">${APP_NAME}</h1>
-        <p class="subtitle">One terminal controller for Claude, Codex, Gemini, and local HTTP-hosted models. Each card now shows the router ledger and the account-wide usage separately so external usage from other terminals stays visible without flattening the project view.</p>
+        <p class="subtitle">One terminal controller for Claude, Codex, Gemini, and local models. The view keeps the important totals visible without repeating the same account and project numbers in separate sections.</p>
       </div>
       <div class="hero-meta">
         <div>
@@ -676,33 +680,32 @@ function buildDashboardHtml(snapshot) {
     <section class="section">
       <div class="section-head">
         <div>
-          <h2 class="section-title">Provider accounts</h2>
-          <p class="section-note">This view is account-wide. It shows the authenticated account, router-level effective usage, and the provider that will be selected for the next turn.</p>
+          <h2 class="section-title">Providers</h2>
+          <p class="section-note">One compact card per provider. Account-wide totals and the local router ledger stay on the same card; activity is collapsed below by default.</p>
         </div>
       </div>
       <div class="cards account-cards" id="account-cards"></div>
     </section>
 
-    <section class="section">
-      <div class="section-head">
+    <details class="activity">
+      <summary>
         <div>
-          <h2 class="section-title">Project ledgers</h2>
-          <p class="section-note">This view keeps the per-project router ledger separate so the local workspace budget does not get flattened into the account-wide snapshot.</p>
+          <h2 class="activity-title">Activity</h2>
+          <p class="activity-note">Handoffs and recent exchanges are hidden until you need them.</p>
+        </div>
+        <span class="pill"><strong>Show</strong> details</span>
+      </summary>
+      <div class="activity-grid">
+        <div class="feed-card">
+          <h2>Handoffs</h2>
+          <ul class="handoff-list" id="handoff-list"></ul>
+        </div>
+        <div class="feed-card">
+          <h2>Recent exchanges</h2>
+          <ul class="handoff-list" id="exchange-list"></ul>
         </div>
       </div>
-      <div class="cards ledger-cards" id="ledger-cards"></div>
-    </section>
-
-    <section class="feed">
-      <div class="feed-card">
-        <h2>Handoffs</h2>
-        <ul class="handoff-list" id="handoff-list"></ul>
-      </div>
-      <div class="feed-card">
-        <h2>Recent exchanges</h2>
-        <ul class="handoff-list" id="exchange-list"></ul>
-      </div>
-    </section>
+    </details>
   </div>
 
   <script>
@@ -812,12 +815,12 @@ function buildDashboardHtml(snapshot) {
       const descriptor = provider.transport === 'http'
         ? 'HTTP · ' + escapeHtml(provider.target || provider.command || provider.transport)
         : escapeHtml(provider.target || provider.command || provider.model || '');
-      const observedUsage = provider.observedUsage || provider.statusUsage || provider.accountUsage || null;
       const accountUsed = Number.isFinite(provider.effectiveUsedTokens) ? provider.effectiveUsedTokens : Number.isFinite(provider.usedTokens) ? provider.usedTokens : 0;
-      const accountRemaining = Number.isFinite(provider.remainingTokens) ? provider.remainingTokens : Math.max(0, (provider.limitTokens || 0) - accountUsed);
       const accountUsageValue = formatCompactNumber(accountUsed) + ' / ' + formatCompactNumber(provider.limitTokens);
-      const observedValue = formatObservedUsageSnapshot(observedUsage, true);
-      const observedSyncValue = formatTimestamp(provider.observedLastUsageAt);
+      const projectUsed = Number.isFinite(provider.projectUsedTokens) ? provider.projectUsedTokens : Number.isFinite(provider.usedTokens) ? provider.usedTokens : 0;
+      const projectUsageValue = formatCompactNumber(projectUsed) + ' / ' + formatCompactNumber(provider.limitTokens);
+      const accountLabelValue = provider.accountLabel ? String(provider.accountLabel) : 'n/a';
+      const syncValue = formatTimestamp(provider.lastUsageAt || provider.observedLastUsageAt);
       const action = provider.isActive
         ? '<button class="primary" disabled>Active</button>'
         : '<button class="primary" data-provider-id="' + escapeHtml(provider.id) + '">Make active</button>';
@@ -835,64 +838,21 @@ function buildDashboardHtml(snapshot) {
               '<div class="pie-label">',
                 '<div class="percent">account ' + formatPercent(provider.ratio || 0) + '</div>',
                 '<div class="fraction">account ' + escapeHtml(accountUsageValue) + '</div>',
-                '<div class="fraction" style="max-width: 160px; color: #cbd5e1;">' + escapeHtml(provider.accountLabel || 'n/a') + '</div>',
+                '<div class="fraction">project ' + escapeHtml(projectUsageValue) + '</div>',
               '</div>',
             '</div>',
             '<div class="stats">',
               '<div class="stat"><span>State</span><strong title="' + escapeHtml(stateLabel) + '">' + escapeHtml(stateLabel) + '</strong></div>',
+              '<div class="stat"><span>Account</span><strong title="' + escapeHtml(accountLabelValue) + '">' + escapeHtml(accountLabelValue) + '</strong></div>',
               '<div class="stat"><span>Account usage</span><strong title="' + escapeHtml(formatNumber(accountUsed) + ' / ' + formatNumber(provider.limitTokens)) + '">' + escapeHtml(accountUsageValue) + '</strong></div>',
-              '<div class="stat"><span>Account remaining</span><strong title="' + escapeHtml(formatNumber(accountRemaining)) + '">' + formatCompactNumber(accountRemaining) + '</strong></div>',
-              '<div class="stat"><span>Observed usage</span><strong title="' + escapeHtml(formatObservedUsageSnapshot(observedUsage, false)) + '">' + escapeHtml(observedValue) + '</strong></div>',
+              '<div class="stat"><span>Project usage</span><strong title="' + escapeHtml(formatNumber(projectUsed) + ' / ' + formatNumber(provider.limitTokens)) + '">' + escapeHtml(projectUsageValue) + '</strong></div>',
               '<div class="stat"><span>Auth / Health</span><strong title="' + escapeHtml((provider.authState || 'unknown') + ' / ' + (provider.health || 'unknown')) + '">' + escapeHtml((provider.authState || 'unknown') + ' / ' + (provider.health || 'unknown')) + '</strong></div>',
-              '<div class="stat"><span>Account</span><strong title="' + escapeHtml(provider.accountLabel || 'n/a') + '">' + escapeHtml(provider.accountLabel || 'n/a') + '</strong></div>',
-              '<div class="stat"><span>Turns</span><strong title="' + formatNumber(provider.totalTurns || 0) + '">' + formatCompactNumber(provider.totalTurns || 0) + '</strong></div>',
-              '<div class="stat"><span>Observed sync</span><strong title="' + escapeHtml(observedSyncValue) + '">' + escapeHtml(observedSyncValue) + '</strong></div>',
+              '<div class="stat"><span>Sync</span><strong title="' + escapeHtml(syncValue) + '">' + escapeHtml(syncValue) + '</strong></div>',
               provider.statusMessage ? '<div class="stat note"><span>Note</span><strong title="' + escapeHtml(provider.statusMessage) + '">' + escapeHtml(provider.statusMessage) + '</strong></div>' : '',
             '</div>',
           '</div>',
           '<div class="card-actions">' + action + '</div>',
           provider.lastError ? '<div style="margin-top:12px; color:#fca5a5; font-size:0.84rem;">Last error: ' + escapeHtml(provider.lastError) + '</div>' : '',
-        '</article>',
-      ].join('');
-    }
-
-    function renderLedgerCard(provider, index) {
-      const percent = Math.max(0, Math.min(100, provider.projectRatioPercent || 0));
-      const angle = Math.round((percent / 100) * 360);
-      const stateLabel = provider.stateLabel || (provider.isActive ? 'active' : provider.enabled === false ? 'disabled' : 'inactive');
-      const badgeClass = stateLabel === 'active' ? 'active' : stateLabel === 'disabled' ? 'disabled' : 'inactive';
-      const projectUsed = Number.isFinite(provider.projectUsedTokens) ? provider.projectUsedTokens : Number.isFinite(provider.usedTokens) ? provider.usedTokens : 0;
-      const projectRemaining = Number.isFinite(provider.projectRemainingTokens) ? provider.projectRemainingTokens : Math.max(0, (provider.limitTokens || 0) - projectUsed);
-      const sessionRef = formatSessionRef(provider.lastSessionRef);
-      const projectUsageValue = formatCompactNumber(projectUsed) + ' / ' + formatCompactNumber(provider.limitTokens);
-      const observedValue = formatObservedUsageSnapshot(provider.observedUsage || provider.statusUsage || provider.accountUsage, true);
-      const projectSyncValue = formatTimestamp(provider.lastUsageAt);
-      return [
-        '<article class="card" style="--accent:' + accentForIndex(index) + '">',
-          '<div class="card-head">',
-            '<div>',
-              '<h3 class="name">' + escapeHtml(provider.label) + '</h3>',
-              '<div style="color: var(--muted); font-size: 0.82rem; margin-top: 6px;">Project ledger</div>',
-            '</div>',
-            '<span class="badge ' + badgeClass + '">' + escapeHtml(stateLabel) + '</span>',
-          '</div>',
-          '<div class="card-grid ledger-grid">',
-            '<div class="pie small" style="--filled:' + angle + 'deg; --accent:' + accentForIndex(index) + '">',
-              '<div class="pie-label">',
-                '<div class="percent">ledger ' + formatPercent(provider.projectRatio || 0) + '</div>',
-                '<div class="fraction">ledger ' + escapeHtml(projectUsageValue) + '</div>',
-                '<div class="fraction" style="max-width: 136px; color: #cbd5e1;">' + escapeHtml(provider.accountLabel || 'n/a') + '</div>',
-              '</div>',
-            '</div>',
-            '<div class="stats">',
-              '<div class="stat"><span>Project ledger</span><strong title="' + escapeHtml(formatNumber(projectUsed) + ' / ' + formatNumber(provider.limitTokens)) + '">' + escapeHtml(projectUsageValue) + '</strong></div>',
-              '<div class="stat"><span>Project remaining</span><strong title="' + escapeHtml(formatNumber(projectRemaining)) + '">' + formatCompactNumber(projectRemaining) + '</strong></div>',
-              '<div class="stat"><span>Observed usage</span><strong title="' + escapeHtml(formatObservedUsageSnapshot(provider.observedUsage || provider.statusUsage || provider.accountUsage, false)) + '">' + escapeHtml(observedValue) + '</strong></div>',
-              '<div class="stat"><span>Project sync</span><strong title="' + escapeHtml(projectSyncValue) + '">' + escapeHtml(projectSyncValue) + '</strong></div>',
-              '<div class="stat"><span>Session</span><strong title="' + escapeHtml(sessionRef) + '">' + escapeHtml(sessionRef) + '</strong></div>',
-              provider.statusMessage ? '<div class="stat note"><span>Note</span><strong title="' + escapeHtml(provider.statusMessage) + '">' + escapeHtml(provider.statusMessage) + '</strong></div>' : '',
-            '</div>',
-          '</div>',
         '</article>',
       ].join('');
     }
@@ -915,7 +875,7 @@ function buildDashboardHtml(snapshot) {
       }).join('');
     }
 
-    function render(snapshot) {
+function render(snapshot) {
       document.getElementById('active-provider').textContent = snapshot.activeProvider ? snapshot.activeProvider.label : '-';
       document.getElementById('summary-active-provider').textContent = snapshot.activeProvider ? snapshot.activeProvider.label : '-';
       document.getElementById('summary-next-provider').textContent = snapshot.nextProvider ? snapshot.nextProvider.label : 'none';
@@ -926,7 +886,6 @@ function buildDashboardHtml(snapshot) {
       document.getElementById('total-limit').textContent = formatNumber(snapshot.totalLimitTokens);
       document.getElementById('project-root').textContent = snapshot.cwd || '-';
       document.getElementById('account-cards').innerHTML = (snapshot.providerViews || []).map(renderAccountCard).join('');
-      document.getElementById('ledger-cards').innerHTML = (snapshot.providerViews || []).map(renderLedgerCard).join('');
       document.getElementById('handoff-list').innerHTML = renderHandoffList(snapshot.handoffs || []);
       document.getElementById('exchange-list').innerHTML = renderExchangeList(snapshot.recentExchanges || []);
     }

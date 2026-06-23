@@ -121,11 +121,10 @@ test('dashboard server exposes the state API and active-provider switch', async 
   assert.match(html, /STATE_URL = PROJECT_CWD/);
   assert.match(html, /Refresh<\/button>/);
   assert.match(html, /Global account total/);
-  assert.match(html, /Provider accounts/);
-  assert.match(html, /Project ledgers/);
+  assert.match(html, /Providers/);
+  assert.match(html, /Activity/);
   assert.match(html, /inactive/);
   assert.match(html, /Account usage/);
-  assert.match(html, /Observed usage/);
   assert.doesNotMatch(html, /setInterval\(refresh/);
 
   const stateResponse = await invoke('GET', '/api/state');
@@ -134,8 +133,7 @@ test('dashboard server exposes the state API and active-provider switch', async 
   assert.equal(snapshot.activeProviderId, 'claude');
   assert.equal(snapshot.providerViews.length, 2);
   assert.match(renderStatusText(snapshot), /Global summary/);
-  assert.match(renderStatusText(snapshot), /Provider accounts/);
-  assert.match(renderStatusText(snapshot), /Project ledgers/);
+  assert.match(renderStatusText(snapshot), /Providers/);
   assert.match(renderStatusText(snapshot), /Claude/);
 
   const switchResponse = await invoke('POST', '/api/active', { providerId: 'codex' });

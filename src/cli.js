@@ -498,22 +498,23 @@ async function runDiscuss(parsed, commandArgs) {
   }
 }
 
-async function runChat(router) {
-  const rl = readline.createInterface({ input: stdin, output: stdout, terminal: true });
-  stdout.write(`${APP_NAME} chat. Type instructions for the active model. Use /task <prompt> for workspace actions, /status, /switch <providerId>, /exit.\n`);
+async function handleChatInput(router, input, handlers = {}) {
+  const runAskImpl = typeof handlers.runAsk === 'function' ? handlers.runAsk : runAsk;
+  const runTaskImpl = typeof handlers.runTask === 'function' ? handlers.runTask : runTask;
+  const stdoutWriter = handlers.stdout && typeof handlers.stdout.write === 'function' ? handlers.stdout : stdout;
+  const stderrWriter = handlers.stderr && typeof handlers.stderr.write === 'function' ? handlers.stderr : stderr;
+  const line = String(input || '').trim();
 
-  while (true) {
-    const line = await rl.question('model-router> ');
-    const input = line.trim();
-    if (!input) {
-      continue;
+  if (!line) {
+    return { exit: false };
+  }
+
+  try {
+    if (line === '/exit' || line === '/quit') {
+      return { exit: true };
     }
 
-    if (input === '/exit' || input === '/quit') {
-      break;
-    }
-
-    if (input === '/status') {
+    if (line === '/status') {
       if (typeof router.refreshProviderStatus === 'function') {
         try {
           await router.refreshProviderStatus();
@@ -521,43 +522,63 @@ async function runChat(router) {
           // Fall back to the cached snapshot.
         }
       }
-      stdout.write(`${renderStatusText(router.snapshot())}\n`);
-      continue;
+      stdoutWriter.write(`${renderStatusText(router.snapshot())}\n`);
+      return { exit: false };
     }
 
-    if (input.startsWith('/switch ')) {
-      const providerId = input.slice('/switch '.length).trim();
+    if (line.startsWith('/switch ')) {
+      const providerId = line.slice('/switch '.length).trim();
       if (!providerId) {
-        stdout.write('Usage: /switch <providerId>\n');
-        continue;
+        stdoutWriter.write('Usage: /switch <providerId>\n');
+        return { exit: false };
       }
       if (!router.setActiveProvider(providerId, 'manual')) {
-        stdout.write(`Unknown provider: ${providerId}\n`);
-        continue;
+        stdoutWriter.write(`Unknown provider: ${providerId}\n`);
+        return { exit: false };
       }
-      stdout.write(`Active provider set to ${providerId}\n`);
-      continue;
+      stdoutWriter.write(`Active provider set to ${providerId}\n`);
+      return { exit: false };
     }
 
-    if (input.startsWith('/task ')) {
-      const taskPrompt = input.slice('/task '.length).trim();
+    if (line.startsWith('/ask ')) {
+      const askPrompt = line.slice('/ask '.length).trim();
+      if (!askPrompt) {
+        stdoutWriter.write('Usage: /ask <prompt>\n');
+        return { exit: false };
+      }
+      await runAskImpl(router, { json: false }, [askPrompt]);
+      return { exit: false };
+    }
+
+    if (line.startsWith('/task ')) {
+      const taskPrompt = line.slice('/task '.length).trim();
       if (!taskPrompt) {
-        stdout.write('Usage: /task <prompt>\n');
-        continue;
+        stdoutWriter.write('Usage: /task <prompt>\n');
+        return { exit: false };
       }
-      await runTask(router, { json: false }, [taskPrompt]);
-      continue;
+      await runTaskImpl(router, { json: false }, [taskPrompt]);
+      return { exit: false };
     }
 
-    const result = await router.send(input);
-    if (result.switchedFrom && result.switchedTo) {
-      stdout.write(`Switched ${result.switchedFrom} -> ${result.switchedTo}\n`);
+    await runTaskImpl(router, { json: false }, [line]);
+    return { exit: false };
+  } catch (error) {
+    const message = error && error.message ? error.message : String(error);
+    stderrWriter.write(`${message}\n`);
+    return { exit: false, error: true, message };
+  }
+}
+
+async function runChat(router) {
+  const rl = readline.createInterface({ input: stdin, output: stdout, terminal: true });
+  stdout.write(`${APP_NAME} chat. Type instructions for the active model to edit the workspace. Use /ask <prompt> for a conversational answer, /status, /switch <providerId>, /exit.\n`);
+
+  while (true) {
+    const line = await rl.question('model-router> ');
+    const outcome = await handleChatInput(router, line, { stdout: stdout, stderr });
+    if (outcome.exit) {
+      break;
     }
-    if (!result.ok) {
-      stderr.write(`${result.errorMessage || 'Provider failed'}\n`);
-      continue;
-    }
-    stdout.write(`${result.text}\n`);
   }
 
   rl.close();
@@ -835,6 +856,7 @@ async function main(argv = process.argv.slice(2)) {
 module.exports = {
   createRuntime,
   createStatusRuntime,
+  handleChatInput,
   main,
   parseArgs,
   printStatus,
@@ -843,6 +865,7 @@ module.exports = {
   runChat,
   runInit,
   runDiscuss,
+  handleChatInput,
   runServe,
   runSwitch,
   runTask,

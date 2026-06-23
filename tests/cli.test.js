@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const os = require('node:os');
 const fs = require('node:fs');
 const path = require('node:path');
-const { createRuntime, createStatusRuntime } = require('../src/cli');
+const { createRuntime, createStatusRuntime, handleChatInput } = require('../src/cli');
 
 test('status falls back to local state when the daemon is absent', async () => {
   const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-model-router-home-'));
@@ -104,4 +104,33 @@ test('interactive runtime falls back to the local router when the daemon is unav
       process.env.AI_MODEL_ROUTER_CONFIG = originalConfig;
     }
   }
+});
+
+test('chat routes a plain prompt through the agent task flow', async () => {
+  const calls = [];
+  const writes = [];
+  const router = {
+    refreshProviderStatus: async () => {},
+    snapshot: () => ({ cwd: '/tmp/project', providerViews: [] }),
+    setActiveProvider: () => true,
+  };
+
+  const result = await handleChatInput(router, 'inspect the project and create a file', {
+    runTask: async (_router, _parsed, commandArgs) => {
+      calls.push(commandArgs);
+      return { ok: true };
+    },
+    runAsk: async () => {
+      throw new Error('ask should not be used for plain prompts');
+    },
+    stdout: {
+      write(value) {
+        writes.push(String(value));
+      },
+    },
+  });
+
+  assert.equal(result.exit, false);
+  assert.deepEqual(calls, [['inspect the project and create a file']]);
+  assert.equal(writes.length, 0);
 });

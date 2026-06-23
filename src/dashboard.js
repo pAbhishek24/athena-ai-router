@@ -824,6 +824,7 @@ function buildDashboardHtml(snapshot) {
       const action = provider.isActive
         ? '<button class="primary" disabled>Active</button>'
         : '<button class="primary" data-provider-id="' + escapeHtml(provider.id) + '">Make active</button>';
+      const usageTitle = 'Account ' + formatCompactNumber(accountUsed) + ' of ' + formatCompactNumber(provider.limitTokens) + '; project ' + formatCompactNumber(projectUsed) + ' of ' + formatCompactNumber(provider.limitTokens);
       return [
         '<article class="card ' + activeClass + '" style="--accent:' + accentForIndex(index) + '">',
           '<div class="card-head">',
@@ -834,13 +835,7 @@ function buildDashboardHtml(snapshot) {
             badge,
           '</div>',
           '<div class="card-grid">',
-            '<div class="pie" style="--filled:' + angle + 'deg; --accent:' + accentForIndex(index) + '">',
-              '<div class="pie-label">',
-                '<div class="percent">account ' + formatPercent(provider.ratio || 0) + '</div>',
-                '<div class="fraction">account ' + escapeHtml(accountUsageValue) + '</div>',
-                '<div class="fraction">project ' + escapeHtml(projectUsageValue) + '</div>',
-              '</div>',
-            '</div>',
+            '<div class="pie" aria-label="' + escapeHtml(usageTitle) + '" title="' + escapeHtml(usageTitle) + '" style="--filled:' + angle + 'deg; --accent:' + accentForIndex(index) + '"></div>',
             '<div class="stats">',
               '<div class="stat"><span>State</span><strong title="' + escapeHtml(stateLabel) + '">' + escapeHtml(stateLabel) + '</strong></div>',
               '<div class="stat"><span>Account</span><strong title="' + escapeHtml(accountLabelValue) + '">' + escapeHtml(accountLabelValue) + '</strong></div>',

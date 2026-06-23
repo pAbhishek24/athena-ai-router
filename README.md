@@ -83,7 +83,8 @@ Example shape:
 - `model-router status` and `model-router task` refresh daemon state before each turn, so usage changes made from other terminals or from installed shims show up in the current session.
 - Codex usage is reconciled from Codex's local SQLite state in `~/.codex`. The router ledger uses the current repo cwd only, while the dashboard also shows the account-wide Codex total as observed usage.
 - `model-router task` is the closest mode to a CLI IDE. It asks the model for a JSON action plan and executes workspace tools locally, so file edits and shell commands happen from the router instead of only being described in text.
-- `model-router chat` is the interactive agent loop. Plain prompts are treated as workspace tasks, while `/ask <prompt>` inside chat gives you a one-shot conversational answer.
+- `model-router chat` is the interactive agent loop. It prints the available providers, account labels, and the selected session model before the first prompt. Plain prompts are treated as workspace tasks, while `/ask <prompt>` inside chat gives you a one-shot conversational answer.
+- Shared memory lives in the project state file and is reused across provider switches, so the ongoing task context stays intact.
 - `model-router app` or `model-router panel` opens the native menubar app. It uses an embedded WebKit view, has a manual Refresh button, and will try to reconnect the daemon on launch.
 - `model-router serve` is the browser/debug endpoint if you want to inspect the dashboard URL directly.
 - To track direct CLI usage, run `model-router shims install` and source `~/.ai-model-router/shims/env.sh` in the shells that should use the wrappers.

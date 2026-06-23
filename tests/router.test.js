@@ -229,6 +229,8 @@ test('router falls back to another provider when the active one fails', async ()
   assert.equal(result.text, 'fallback answer');
   assert.equal(calls.length, 2);
   assert.equal(router.state.activeProviderId, 'codex');
+  assert.equal(router.state.recentExchanges.length, 1);
+  assert.match(buildContextPreview(router.state, cwd, 'Continue the task'), /fallback answer/);
 });
 
 test('router can hand off from a CLI provider to an HTTP local model', async () => {

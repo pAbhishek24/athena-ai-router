@@ -569,9 +569,41 @@ async function handleChatInput(router, input, handlers = {}) {
   }
 }
 
+function formatChatSessionOverview(snapshot) {
+  const lines = [];
+  const activeProvider = snapshot && snapshot.activeProvider ? snapshot.activeProvider : null;
+  const activeLabel = activeProvider
+    ? `${activeProvider.label}${activeProvider.accountLabel ? ` (${activeProvider.accountLabel})` : ''}`
+    : 'none';
+
+  lines.push(`${APP_NAME} chat`);
+  lines.push(`Selected for this session: ${activeLabel}`);
+  lines.push('Available providers:');
+
+  for (const provider of snapshot.providerViews || []) {
+    const stateLabel = provider.stateLabel || (provider.isActive ? 'active' : provider.enabled === false ? 'disabled' : 'inactive');
+    const accountLabel = provider.accountLabel || 'n/a';
+    const marker = provider.isActive ? '>' : ' ';
+    const selectionLabel = provider.isActive ? ' [selected]' : '';
+    lines.push(`${marker} ${provider.label} | account: ${accountLabel} | state: ${stateLabel}${selectionLabel}`);
+  }
+
+  lines.push('Shared memory: saved in the project state so provider switches keep the same task context.');
+  lines.push('Use /ask <prompt> for a conversational answer, /status, /switch <providerId>, /exit.');
+  return lines.join('\n');
+}
+
 async function runChat(router) {
   const rl = readline.createInterface({ input: stdin, output: stdout, terminal: true });
-  stdout.write(`${APP_NAME} chat. Type instructions for the active model to edit the workspace. Use /ask <prompt> for a conversational answer, /status, /switch <providerId>, /exit.\n`);
+  if (typeof router.refreshProviderStatus === 'function') {
+    try {
+      await router.refreshProviderStatus();
+    } catch {
+      // Use the cached snapshot if provider refresh fails.
+    }
+  }
+  stdout.write(`${formatChatSessionOverview(router.snapshot())}\n`);
+  stdout.write('Type a prompt to run the agent loop. Use /ask <prompt> for a conversational answer.\n');
 
   while (true) {
     const line = await rl.question('model-router> ');
@@ -857,6 +889,7 @@ module.exports = {
   createRuntime,
   createStatusRuntime,
   handleChatInput,
+  formatChatSessionOverview,
   main,
   parseArgs,
   printStatus,

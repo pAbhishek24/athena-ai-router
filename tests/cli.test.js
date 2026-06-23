@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const os = require('node:os');
 const fs = require('node:fs');
 const path = require('node:path');
-const { createRuntime, createStatusRuntime, handleChatInput } = require('../src/cli');
+const { createRuntime, createStatusRuntime, formatChatSessionOverview, handleChatInput } = require('../src/cli');
 
 test('status falls back to local state when the daemon is absent', async () => {
   const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-model-router-home-'));
@@ -104,6 +104,25 @@ test('interactive runtime falls back to the local router when the daemon is unav
       process.env.AI_MODEL_ROUTER_CONFIG = originalConfig;
     }
   }
+});
+
+test('chat session overview shows provider accounts and the selected default', () => {
+  const overview = formatChatSessionOverview({
+    activeProvider: {
+      label: 'Codex',
+      accountLabel: 'ChatGPT',
+    },
+    providerViews: [
+      { label: 'Claude', accountLabel: 'Claude', stateLabel: 'inactive' },
+      { label: 'Codex', accountLabel: 'ChatGPT', stateLabel: 'active', isActive: true },
+      { label: 'Gemini', accountLabel: 'abhishek08pandey@gmail.com', stateLabel: 'inactive' },
+    ],
+  });
+
+  assert.match(overview, /Selected for this session: Codex \(ChatGPT\)/);
+  assert.match(overview, /> Codex \| account: ChatGPT \| state: active \[selected\]/);
+  assert.match(overview, /Claude \| account: Claude \| state: inactive/);
+  assert.match(overview, /Shared memory: saved in the project state/);
 });
 
 test('chat routes a plain prompt through the agent task flow', async () => {

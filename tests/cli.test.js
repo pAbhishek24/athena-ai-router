@@ -115,13 +115,15 @@ test('chat session overview shows provider accounts and the selected default', (
     providerViews: [
       { label: 'Claude', accountLabel: 'Claude', stateLabel: 'inactive' },
       { label: 'Codex', accountLabel: 'ChatGPT', stateLabel: 'active', isActive: true },
-      { label: 'Gemini', accountLabel: 'abhishek08pandey@gmail.com', stateLabel: 'inactive' },
+      { label: 'Gemini', accountLabel: 'abhishek08pandey@gmail.com', stateLabel: 'inactive', health: 'disabled' },
     ],
   });
 
   assert.match(overview, /Selected for this session: Codex \(ChatGPT\)/);
-  assert.match(overview, /> Codex \| account: ChatGPT \| auth: unknown \| state: active \[selected\]/);
-  assert.match(overview, /Claude \| account: Claude \| auth: unknown \| state: inactive/);
+  assert.match(overview, /\|\s*Sel\s*\|\s*Provider\s*\|\s*Account\s*\|\s*Auth\s*\|\s*State\s*\|/);
+  assert.match(overview, /\|\s*>\s*\|\s*Codex\s*\|\s*ChatGPT\s*\|\s*unknown\s*\|\s*active\s*\|/);
+  assert.match(overview, /\|\s*\|\s*Claude\s*\|\s*Claude\s*\|\s*unknown\s*\|\s*inactive\s*\|/);
+  assert.match(overview, /\|\s*\|\s*Gemini\s*\|\s*abhishek08pandey@gmail\.com\s*\|\s*unknown\s*\|\s*disabled\s*\|/);
   assert.match(overview, /Shared memory: saved in the project state/);
   assert.match(overview, /Auth state is observed from the provider tools/);
 });

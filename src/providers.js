@@ -410,6 +410,18 @@ async function probeProviderStatus(provider, { cwd, env, runner = runCommand, fe
   const statusCommand = resolveProviderStatusCommand(provider, env);
   const status = provider.status && typeof provider.status === 'object' ? provider.status : {};
   if (!statusCommand || status.enabled === false) {
+    if (provider.id === 'gemini') {
+      return {
+        health: 'disabled',
+        authState: 'disabled',
+        accountLabel: status.fallbackAccountLabel || provider.label || provider.id,
+        statusMessage: getGeminiUnsupportedMessage(),
+        usage: null,
+        lastStatusAt: now,
+        raw: null,
+      };
+    }
+
     const command = resolveProviderCommand(provider, env);
     return {
       health: command ? 'ready' : 'missing',
@@ -684,6 +696,10 @@ function isGeminiUnsupportedClient(message = '') {
   );
 }
 
+function getGeminiUnsupportedMessage() {
+  return 'Gemini CLI is no longer supported for individual accounts. Resolution: switch to Claude, Codex, or a local model, or migrate to Antigravity.';
+}
+
 function formatProviderErrorMessage(provider, message = '') {
   const text = String(message || '').trim();
   if (!text) {
@@ -691,7 +707,7 @@ function formatProviderErrorMessage(provider, message = '') {
   }
 
   if (provider && provider.id === 'gemini' && isGeminiUnsupportedClient(text)) {
-    return 'Gemini CLI is no longer supported for individual accounts. Resolution: switch to Claude, Codex, or a local model, or migrate to Antigravity.';
+    return getGeminiUnsupportedMessage();
   }
 
   return text;

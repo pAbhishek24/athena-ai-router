@@ -110,7 +110,9 @@ function renderStatusText(snapshot) {
   lines.push('-'.repeat(72));
 
   for (const provider of snapshot.providerViews) {
-    const state = provider.stateLabel || (provider.isActive ? 'active' : provider.enabled === false ? 'disabled' : 'inactive');
+    const state = provider.health === 'disabled' || provider.enabled === false
+      ? 'disabled'
+      : provider.stateLabel || (provider.isActive ? 'active' : 'inactive');
     const accountUsed = Number.isFinite(provider.effectiveUsedTokens) ? provider.effectiveUsedTokens : provider.usedTokens;
     const projectUsed = Number.isFinite(provider.projectUsedTokens) ? provider.projectUsedTokens : provider.usedTokens;
     const projectUsage = `${formatNumber(projectUsed)} / ${formatNumber(provider.limitTokens)} remaining ${formatNumber(provider.projectRemainingTokens)}`;
@@ -781,7 +783,9 @@ function buildDashboardHtml(snapshot) {
 
     function renderAccountCard(provider, index) {
       const angle = Math.round((Math.max(0, Math.min(100, provider.projectRatioPercent || 0)) / 100) * 360);
-      const stateLabel = provider.stateLabel || (provider.isActive ? 'active' : provider.enabled === false ? 'disabled' : 'inactive');
+      const stateLabel = provider.health === 'disabled' || provider.enabled === false
+        ? 'disabled'
+        : provider.stateLabel || (provider.isActive ? 'active' : 'inactive');
       const activeClass = provider.isActive ? 'active' : '';
       const badgeClass = stateLabel === 'active' ? 'active' : stateLabel === 'disabled' ? 'disabled' : 'inactive';
       const badge = '<span class="badge ' + badgeClass + '">' + escapeHtml(stateLabel) + '</span>';

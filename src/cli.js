@@ -151,6 +151,25 @@ function compactPromptPreview(text, maxChars = 120) {
   return `${normalized.slice(0, Math.max(0, maxChars - 1))}…`;
 }
 
+function formatTableCell(value, width) {
+  const text = String(value ?? '');
+  if (text.length > width) {
+    return text.slice(0, Math.max(0, width - 1)).padEnd(width, ' ');
+  }
+  return text.padEnd(width, ' ');
+}
+
+function formatProviderAvailabilityState(provider) {
+  if (provider && (provider.health === 'disabled' || provider.enabled === false)) {
+    return 'disabled';
+  }
+  return provider && provider.stateLabel
+    ? provider.stateLabel
+    : provider && provider.isActive
+      ? 'active'
+      : 'inactive';
+}
+
 async function createRuntime(argv, options = {}) {
   const parsed = parseArgs(argv);
   const command = parsed._[0] || 'status';
@@ -591,18 +610,35 @@ function formatChatSessionOverview(snapshot) {
   const activeLabel = activeProvider
     ? `${activeProvider.label}${activeProvider.accountLabel ? ` (${activeProvider.accountLabel})` : ''}`
     : 'none';
+  const providers = Array.isArray(snapshot.providerViews) ? snapshot.providerViews : [];
 
   lines.push(`${APP_NAME} chat`);
   lines.push(`Selected for this session: ${activeLabel}`);
   lines.push('Available providers:');
 
-  for (const provider of snapshot.providerViews || []) {
-    const stateLabel = provider.stateLabel || (provider.isActive ? 'active' : provider.enabled === false ? 'disabled' : 'inactive');
-    const accountLabel = provider.accountLabel || 'n/a';
-    const authLabel = provider.authState || 'unknown';
-    const marker = provider.isActive ? '>' : ' ';
-    const selectionLabel = provider.isActive ? ' [selected]' : '';
-    lines.push(`${marker} ${provider.label} | account: ${accountLabel} | auth: ${authLabel} | state: ${stateLabel}${selectionLabel}`);
+  const rows = providers.map((provider) => [
+    provider.isActive ? '>' : '',
+    provider.label || 'n/a',
+    provider.accountLabel || 'n/a',
+    provider.authState || 'unknown',
+    formatProviderAvailabilityState(provider),
+  ]);
+  const headers = ['Sel', 'Provider', 'Account', 'Auth', 'State'];
+  const widths = headers.map((header, index) => {
+    const rawWidth = Math.max(
+      header.length,
+      ...rows.map((row) => String(row[index] ?? '').length)
+    );
+    const maxWidth = [3, 18, 32, 10, 10][index] || rawWidth;
+    return Math.min(rawWidth, maxWidth);
+  });
+  const formatRow = (cells) => `| ${cells.map((cell, index) => formatTableCell(cell, widths[index])).join(' | ')} |`;
+  const separator = `| ${widths.map((width) => '-'.repeat(width)).join(' | ')} |`;
+
+  lines.push(formatRow(headers));
+  lines.push(separator);
+  for (const row of rows) {
+    lines.push(formatRow(row));
   }
 
   lines.push('Shared memory: saved in the project state so provider switches keep the same task context.');

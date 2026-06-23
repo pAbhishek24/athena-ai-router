@@ -66,6 +66,26 @@ test('resolveProviderCommand falls back across Gemini candidate names', () => {
   assert.equal(resolved, gemniPath);
 });
 
+test('probeProviderStatus marks Gemini unsupported without a status probe', async () => {
+  const result = await probeProviderStatus(
+    {
+      id: 'gemini',
+      command: 'gemini',
+      label: 'Gemini',
+    },
+    {
+      cwd: process.cwd(),
+    }
+  );
+
+  assert.equal(result.health, 'disabled');
+  assert.equal(result.authState, 'disabled');
+  assert.equal(
+    result.statusMessage,
+    'Gemini CLI is no longer supported for individual accounts. Resolution: switch to Claude, Codex, or a local model, or migrate to Antigravity.'
+  );
+});
+
 test('buildHttpRequestBody builds an Ollama-compatible payload', () => {
   const body = buildHttpRequestBody(
     {

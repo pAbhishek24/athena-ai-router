@@ -128,7 +128,7 @@ The dashboard shows the router ledger as the switching budget and also surfaces 
 - `app` launches the native menubar status app and attempts to start or reconnect the daemon
 - `panel` is an alias for `app`
 - `ask` sends a single prompt
-- `chat` opens an interactive agent loop and prints the provider/account roster before the first prompt
+- `chat` opens an interactive agent loop and prints the provider/account roster before the first prompt; `/exit` and Ctrl+C persist the shared project context before the window closes
 - `task` opens the agent-style workspace executor
 - `switch` forces the active provider for the next turn
 - `shims install` installs optional command wrappers for direct provider CLIs

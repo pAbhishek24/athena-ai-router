@@ -691,7 +691,7 @@ function formatProviderErrorMessage(provider, message = '') {
   }
 
   if (provider && provider.id === 'gemini' && isGeminiUnsupportedClient(text)) {
-    return 'Gemini CLI is no longer supported for individual accounts. Use another provider or migrate to Antigravity.';
+    return 'Gemini CLI is no longer supported for individual accounts. Resolution: switch to Claude, Codex, or a local model, or migrate to Antigravity.';
   }
 
   return text;

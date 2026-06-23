@@ -143,6 +143,14 @@ function readStdinIfAvailable() {
   });
 }
 
+function compactPromptPreview(text, maxChars = 120) {
+  const normalized = String(text || '').replace(/\s+/g, ' ').trim();
+  if (normalized.length <= maxChars) {
+    return normalized;
+  }
+  return `${normalized.slice(0, Math.max(0, maxChars - 1))}…`;
+}
+
 async function createRuntime(argv, options = {}) {
   const parsed = parseArgs(argv);
   const command = parsed._[0] || 'status';
@@ -540,6 +548,14 @@ async function handleChatInput(router, input, handlers = {}) {
       return { exit: false };
     }
 
+    const snapshot = typeof router.snapshot === 'function' ? router.snapshot() : null;
+    const activeProvider = snapshot && snapshot.activeProvider ? snapshot.activeProvider : null;
+    const providerLabel = activeProvider ? `${activeProvider.label}${activeProvider.accountLabel ? ` (${activeProvider.accountLabel})` : ''}` : 'unknown';
+    const askMode = line.startsWith('/ask ');
+    const taskPrompt = askMode ? line.slice('/ask '.length).trim() : line.startsWith('/task ') ? line.slice('/task '.length).trim() : line;
+    const actionLabel = askMode ? 'conversational answer' : 'workspace task';
+    stdoutWriter.write(`[${providerLabel}] Preparing ${actionLabel} with shared context for: ${compactPromptPreview(taskPrompt)}\n`);
+
     if (line.startsWith('/ask ')) {
       const askPrompt = line.slice('/ask '.length).trim();
       if (!askPrompt) {
@@ -583,18 +599,55 @@ function formatChatSessionOverview(snapshot) {
   for (const provider of snapshot.providerViews || []) {
     const stateLabel = provider.stateLabel || (provider.isActive ? 'active' : provider.enabled === false ? 'disabled' : 'inactive');
     const accountLabel = provider.accountLabel || 'n/a';
+    const authLabel = provider.authState || 'unknown';
     const marker = provider.isActive ? '>' : ' ';
     const selectionLabel = provider.isActive ? ' [selected]' : '';
-    lines.push(`${marker} ${provider.label} | account: ${accountLabel} | state: ${stateLabel}${selectionLabel}`);
+    lines.push(`${marker} ${provider.label} | account: ${accountLabel} | auth: ${authLabel} | state: ${stateLabel}${selectionLabel}`);
   }
 
   lines.push('Shared memory: saved in the project state so provider switches keep the same task context.');
+  lines.push('Auth state is observed from the provider tools or local session cache; model-router stores only metadata and session refs.');
   lines.push('Use /ask <prompt> for a conversational answer, /status, /switch <providerId>, /exit.');
   return lines.join('\n');
 }
 
 async function runChat(router) {
   const rl = readline.createInterface({ input: stdin, output: stdout, terminal: true });
+  let exitRequested = false;
+  let shutdownPromise = null;
+
+  const flushAndExit = async (reason = 'signal') => {
+    if (exitRequested) {
+      return shutdownPromise || Promise.resolve();
+    }
+
+    exitRequested = true;
+    shutdownPromise = (async () => {
+      stdout.write('\nSaving context and exiting chat...\n');
+      if (typeof router.save === 'function') {
+        try {
+          router.save();
+        } catch {
+          // Context is already stored in the daemon or on disk as best effort.
+        }
+      }
+      stdout.write('Chat closed gracefully.\n');
+      rl.close();
+    })();
+    return shutdownPromise;
+  };
+
+  const onSigint = () => {
+    void flushAndExit('signal');
+  };
+  const onSigterm = () => {
+    void flushAndExit('signal');
+  };
+
+  rl.on('SIGINT', onSigint);
+  process.once('SIGINT', onSigint);
+  process.once('SIGTERM', onSigterm);
+
   if (typeof router.refreshProviderStatus === 'function') {
     try {
       await router.refreshProviderStatus();
@@ -603,16 +656,36 @@ async function runChat(router) {
     }
   }
   stdout.write(`${formatChatSessionOverview(router.snapshot())}\n`);
-  stdout.write('Type a prompt to run the agent loop. Use /ask <prompt> for a conversational answer.\n');
 
   while (true) {
-    const line = await rl.question('model-router> ');
+    let line;
+    try {
+      line = await rl.question('model-router> ');
+    } catch (error) {
+      if (exitRequested) {
+        break;
+      }
+      throw error;
+    }
+
+    if (exitRequested) {
+      break;
+    }
+
     const outcome = await handleChatInput(router, line, { stdout: stdout, stderr });
     if (outcome.exit) {
+      await flushAndExit('command');
+      break;
+    }
+
+    if (exitRequested) {
       break;
     }
   }
 
+  process.removeListener('SIGINT', onSigint);
+  process.removeListener('SIGTERM', onSigterm);
+  rl.removeListener('SIGINT', onSigint);
   rl.close();
 }
 

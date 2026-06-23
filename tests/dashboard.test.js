@@ -120,11 +120,12 @@ test('dashboard server exposes the state API and active-provider switch', async 
   assert.match(html, /const PROJECT_CWD =/);
   assert.match(html, /STATE_URL = PROJECT_CWD/);
   assert.match(html, /Refresh<\/button>/);
-  assert.match(html, /Global account total/);
+  assert.match(html, /Observed account total/);
   assert.match(html, /Providers/);
   assert.match(html, /Activity/);
   assert.match(html, /inactive/);
-  assert.match(html, /Account usage/);
+  assert.match(html, /Usage/);
+  assert.doesNotMatch(html, /pie-label/);
   assert.doesNotMatch(html, /setInterval\(refresh/);
 
   const stateResponse = await invoke('GET', '/api/state');

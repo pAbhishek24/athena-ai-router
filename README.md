@@ -29,7 +29,7 @@ npm install -g ai-model-router
 - `model-router app` launches the native menubar status app and tries to bring up the daemon if it is not already running.
 - `model-router panel` is an alias for `model-router app`.
 - `model-router ask "prompt"` sends one prompt through the active model.
-- `model-router chat` starts an interactive agent loop for the active model and falls back to local router mode if the daemon is unavailable.
+- `model-router chat` starts an interactive agent loop for the active model and falls back to local router mode if the daemon is unavailable. It prints the provider roster before the first prompt, and `/exit` or Ctrl+C closes the session after saving the shared project context.
 - `model-router task "prompt"` runs an agent-style workspace task that can read, write, and execute local commands.
 - `model-router feedback [bug|feature|general] [prompt...]` opens a prefilled GitHub issue form for bug reports, feature requests, or general feedback.
 - `model-router discuss [topic...]` opens the GitHub Discussions board for broader questions, ideas, and community conversation.

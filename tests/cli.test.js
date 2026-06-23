@@ -120,9 +120,10 @@ test('chat session overview shows provider accounts and the selected default', (
   });
 
   assert.match(overview, /Selected for this session: Codex \(ChatGPT\)/);
-  assert.match(overview, /> Codex \| account: ChatGPT \| state: active \[selected\]/);
-  assert.match(overview, /Claude \| account: Claude \| state: inactive/);
+  assert.match(overview, /> Codex \| account: ChatGPT \| auth: unknown \| state: active \[selected\]/);
+  assert.match(overview, /Claude \| account: Claude \| auth: unknown \| state: inactive/);
   assert.match(overview, /Shared memory: saved in the project state/);
+  assert.match(overview, /Auth state is observed from the provider tools/);
 });
 
 test('chat routes a plain prompt through the agent task flow', async () => {
@@ -151,5 +152,5 @@ test('chat routes a plain prompt through the agent task flow', async () => {
 
   assert.equal(result.exit, false);
   assert.deepEqual(calls, [['inspect the project and create a file']]);
-  assert.equal(writes.length, 0);
+  assert.match(writes[0], /\[unknown\] Preparing workspace task with shared context for: inspect the project and create a file/);
 });

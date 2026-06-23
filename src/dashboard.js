@@ -101,7 +101,7 @@ function renderStatusText(snapshot) {
   lines.push('');
   lines.push('Global summary');
   lines.push('-'.repeat(72));
-  lines.push(`Account total: ${formatNumber(snapshot.totalUsedTokens)} / ${formatNumber(snapshot.totalLimitTokens)}`);
+  lines.push(`Observed account total: ${formatNumber(snapshot.totalUsedTokens)}`);
   lines.push(`Project ledger: ${formatNumber(snapshot.totalProjectUsedTokens)} / ${formatNumber(snapshot.totalLimitTokens)}`);
   lines.push(`Active provider: ${snapshot.activeProvider ? snapshot.activeProvider.label : 'none'}`);
   lines.push(`Next fallback: ${snapshot.nextProvider ? snapshot.nextProvider.label : 'none'}`);
@@ -113,12 +113,11 @@ function renderStatusText(snapshot) {
     const state = provider.stateLabel || (provider.isActive ? 'active' : provider.enabled === false ? 'disabled' : 'inactive');
     const accountUsed = Number.isFinite(provider.effectiveUsedTokens) ? provider.effectiveUsedTokens : provider.usedTokens;
     const projectUsed = Number.isFinite(provider.projectUsedTokens) ? provider.projectUsedTokens : provider.usedTokens;
-    const accountUsage = `${formatNumber(accountUsed)} / ${formatNumber(provider.limitTokens)}`;
-    const projectUsage = `${formatNumber(projectUsed)} / ${formatNumber(provider.limitTokens)}`;
+    const projectUsage = `${formatNumber(projectUsed)} / ${formatNumber(provider.limitTokens)} remaining ${formatNumber(provider.projectRemainingTokens)}`;
     const auth = String(provider.authState || 'unknown');
     const health = provider.health || 'unknown';
     const prefix = provider.isActive ? '>' : ' ';
-    lines.push(`${prefix} ${provider.label} [${state}] account ${accountUsage} project ${projectUsage} auth ${auth} health ${health}`);
+    lines.push(`${prefix} ${provider.label} [${state}] observed ${formatNumber(accountUsed)} project ${projectUsage} auth ${auth} health ${health}`);
     if (provider.accountLabel) {
       lines.push(`  account: ${provider.accountLabel}`);
     }
@@ -140,11 +139,6 @@ function renderStatusText(snapshot) {
     if (provider.lastSessionRef) {
       lines.push(`  session: ${formatSessionRef(provider.lastSessionRef)}`);
     }
-  }
-
-  lines.push('');
-  if (snapshot.nextProvider) {
-    lines.push(`Next fallback: ${snapshot.nextProvider.label}`);
   }
 
   if (snapshot.handoffs.length > 0) {
@@ -453,26 +447,6 @@ function buildDashboardHtml(snapshot) {
     .pie.small::after {
       inset: 18px;
     }
-    .pie-label {
-      position: relative;
-      z-index: 1;
-      display: grid;
-      place-items: center;
-      gap: 3px;
-      text-align: center;
-    }
-    .pie-label .percent {
-      font-size: 1.22rem;
-      font-weight: 700;
-      line-height: 1;
-    }
-    .pie-label .fraction {
-      color: var(--muted);
-      font-size: 0.72rem;
-      line-height: 1.35;
-      max-width: 176px;
-      word-break: break-word;
-    }
     .stats {
       display: grid;
       grid-template-columns: 1fr;
@@ -643,7 +617,7 @@ function buildDashboardHtml(snapshot) {
 
     <section class="summary-strip">
       <div class="summary-card">
-        <span>Global account total</span>
+        <span>Observed account total</span>
         <strong id="total-used">0</strong>
         <small>Across Claude, Codex, Gemini, and local models</small>
       </div>
@@ -653,7 +627,7 @@ function buildDashboardHtml(snapshot) {
         <small>Current workspace only</small>
       </div>
       <div class="summary-card">
-        <span>Budgeted</span>
+        <span>Router budget</span>
         <strong id="total-limit">0</strong>
         <small>Configured provider budgets</small>
       </div>
@@ -806,8 +780,7 @@ function buildDashboardHtml(snapshot) {
     }
 
     function renderAccountCard(provider, index) {
-      const percent = Math.max(0, Math.min(100, provider.ratioPercent || 0));
-      const angle = Math.round((percent / 100) * 360);
+      const angle = Math.round((Math.max(0, Math.min(100, provider.projectRatioPercent || 0)) / 100) * 360);
       const stateLabel = provider.stateLabel || (provider.isActive ? 'active' : provider.enabled === false ? 'disabled' : 'inactive');
       const activeClass = provider.isActive ? 'active' : '';
       const badgeClass = stateLabel === 'active' ? 'active' : stateLabel === 'disabled' ? 'disabled' : 'inactive';
@@ -816,15 +789,20 @@ function buildDashboardHtml(snapshot) {
         ? 'HTTP · ' + escapeHtml(provider.target || provider.command || provider.transport)
         : escapeHtml(provider.target || provider.command || provider.model || '');
       const accountUsed = Number.isFinite(provider.effectiveUsedTokens) ? provider.effectiveUsedTokens : Number.isFinite(provider.usedTokens) ? provider.usedTokens : 0;
-      const accountUsageValue = formatCompactNumber(accountUsed) + ' / ' + formatCompactNumber(provider.limitTokens);
       const projectUsed = Number.isFinite(provider.projectUsedTokens) ? provider.projectUsedTokens : Number.isFinite(provider.usedTokens) ? provider.usedTokens : 0;
-      const projectUsageValue = formatCompactNumber(projectUsed) + ' / ' + formatCompactNumber(provider.limitTokens);
       const accountLabelValue = provider.accountLabel ? String(provider.accountLabel) : 'n/a';
       const syncValue = formatTimestamp(provider.lastUsageAt || provider.observedLastUsageAt);
       const action = provider.isActive
         ? '<button class="primary" disabled>Active</button>'
         : '<button class="primary" data-provider-id="' + escapeHtml(provider.id) + '">Make active</button>';
-      const usageTitle = 'Account ' + formatCompactNumber(accountUsed) + ' of ' + formatCompactNumber(provider.limitTokens) + '; project ' + formatCompactNumber(projectUsed) + ' of ' + formatCompactNumber(provider.limitTokens);
+      const usageTitle =
+        'Account ' +
+        formatCompactNumber(accountUsed) +
+        ' · project ledger ' +
+        formatCompactNumber(projectUsed) +
+        ' · budget ' +
+        formatCompactNumber(provider.limitTokens);
+      const usageValue = 'Account ' + formatCompactNumber(accountUsed) + ' · project ' + formatCompactNumber(projectUsed);
       return [
         '<article class="card ' + activeClass + '" style="--accent:' + accentForIndex(index) + '">',
           '<div class="card-head">',
@@ -839,8 +817,7 @@ function buildDashboardHtml(snapshot) {
             '<div class="stats">',
               '<div class="stat"><span>State</span><strong title="' + escapeHtml(stateLabel) + '">' + escapeHtml(stateLabel) + '</strong></div>',
               '<div class="stat"><span>Account</span><strong title="' + escapeHtml(accountLabelValue) + '">' + escapeHtml(accountLabelValue) + '</strong></div>',
-              '<div class="stat"><span>Account usage</span><strong title="' + escapeHtml(formatNumber(accountUsed) + ' / ' + formatNumber(provider.limitTokens)) + '">' + escapeHtml(accountUsageValue) + '</strong></div>',
-              '<div class="stat"><span>Project usage</span><strong title="' + escapeHtml(formatNumber(projectUsed) + ' / ' + formatNumber(provider.limitTokens)) + '">' + escapeHtml(projectUsageValue) + '</strong></div>',
+              '<div class="stat"><span>Usage</span><strong title="' + escapeHtml(usageTitle) + '">' + escapeHtml(usageValue) + '</strong></div>',
               '<div class="stat"><span>Auth / Health</span><strong title="' + escapeHtml((provider.authState || 'unknown') + ' / ' + (provider.health || 'unknown')) + '">' + escapeHtml((provider.authState || 'unknown') + ' / ' + (provider.health || 'unknown')) + '</strong></div>',
               '<div class="stat"><span>Sync</span><strong title="' + escapeHtml(syncValue) + '">' + escapeHtml(syncValue) + '</strong></div>',
               provider.statusMessage ? '<div class="stat note"><span>Note</span><strong title="' + escapeHtml(provider.statusMessage) + '">' + escapeHtml(provider.statusMessage) + '</strong></div>' : '',

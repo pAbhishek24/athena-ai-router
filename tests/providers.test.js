@@ -261,6 +261,6 @@ test('probeProviderStatus collapses Gemini unsupported-client errors', async () 
   assert.equal(result.health, 'missing');
   assert.equal(
     result.statusMessage,
-    'Gemini CLI is no longer supported for individual accounts. Use another provider or migrate to Antigravity.'
+    'Gemini CLI is no longer supported for individual accounts. Resolution: switch to Claude, Codex, or a local model, or migrate to Antigravity.'
   );
 });
